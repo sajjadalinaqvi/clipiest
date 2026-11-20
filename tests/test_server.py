@@ -110,14 +110,14 @@ class TestServerEndpoints(unittest.TestCase):
         res = self.client.get("/api/hook-styles")
         self.assertEqual(res.status_code, 200)
         styles = res.json()
-        self.assertGreaterEqual(len(styles), 6)
+        self.assertGreaterEqual(len(styles), 14)
         ids = [s["id"] for s in styles]
-        self.assertIn("banner", ids)
-        self.assertIn("punch", ids)
-        self.assertIn("neon", ids)
-        self.assertIn("fire", ids)
-        self.assertIn("comic", ids)
-        self.assertIn("minimal", ids)
+        expected_styles = [
+            "banner", "punch", "neon", "fire", "minimal", "comic",
+            "matrix", "gold", "cyberpink", "danger", "ice", "thunder", "arcade", "emerald"
+        ]
+        for s in expected_styles:
+            self.assertIn(s, ids)
 
     def test_storage_endpoints(self):
         from clipiest.config import DATA_DIR

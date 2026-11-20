@@ -1107,6 +1107,62 @@ function drawPhonePreview() {
       previewCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
       previewCtx.fillRect(boxX, boxY, boxW, boxH);
       previewCtx.fillStyle = '#ffffff';
+    } else if (hookStyle === 'matrix') {
+      previewCtx.fillStyle = '#052e16';
+      previewCtx.strokeStyle = '#22c55e';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#4ade80';
+    } else if (hookStyle === 'gold') {
+      previewCtx.fillStyle = '#422006';
+      previewCtx.strokeStyle = '#eab308';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#fde047';
+    } else if (hookStyle === 'cyberpink') {
+      previewCtx.fillStyle = '#831843';
+      previewCtx.strokeStyle = '#ec4899';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#f472b6';
+    } else if (hookStyle === 'danger') {
+      previewCtx.fillStyle = '#991b1b';
+      previewCtx.strokeStyle = '#ef4444';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#ffffff';
+    } else if (hookStyle === 'ice') {
+      previewCtx.fillStyle = '#082f49';
+      previewCtx.strokeStyle = '#38bdf8';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#38bdf8';
+    } else if (hookStyle === 'thunder') {
+      previewCtx.fillStyle = '#172554';
+      previewCtx.strokeStyle = '#eab308';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#facc15';
+    } else if (hookStyle === 'arcade') {
+      previewCtx.fillStyle = '#3b0764';
+      previewCtx.strokeStyle = '#06b6d4';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#06b6d4';
+    } else if (hookStyle === 'emerald') {
+      previewCtx.fillStyle = '#064e3b';
+      previewCtx.strokeStyle = '#10b981';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#6ee7b7';
     } else {
       // Default Purple Banner
       previewCtx.fillStyle = '#7c3aed';

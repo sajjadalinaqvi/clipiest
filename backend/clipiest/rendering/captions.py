@@ -56,12 +56,20 @@ STYLE_DEFINITIONS = {
 }
 
 HOOK_STYLES = {
-    "banner": {"name": "Purple Banner", "primary": "&H00FFFFFF&", "outline": "&H00A845FF&", "bord": 12, "shad": 0, "blur": 1},
-    "punch": {"name": "Yellow Punch", "primary": "&H0000FFFF&", "outline": "&H000000FF&", "bord": 14, "shad": 3, "blur": 1},
-    "neon": {"name": "Cyan Neon", "primary": "&H00FFFFFF&", "outline": "&H00FFFF00&", "bord": 10, "shad": 0, "blur": 4},
-    "fire": {"name": "Fire Flame", "primary": "&H00FFFFFF&", "outline": "&H000055FF&", "bord": 12, "shad": 4, "blur": 1},
-    "minimal": {"name": "Clean Dark", "primary": "&H00FFFFFF&", "outline": "&H00202020&", "bord": 10, "shad": 0, "blur": 0},
-    "comic": {"name": "Comic Pop", "primary": "&H0000F0FF&", "outline": "&H00000000&", "bord": 14, "shad": 6, "blur": 0},
+    "banner": {"name": "Purple Banner", "primary": "&H00FFFFFF&", "outline": "&H00A845FF&", "bord": 12, "shad": 0, "blur": 1, "css_bg": "#7c3aed", "css_fg": "#ffffff"},
+    "punch": {"name": "Yellow Punch", "primary": "&H0000FFFF&", "outline": "&H000000FF&", "bord": 14, "shad": 3, "blur": 1, "css_bg": "#dc2626", "css_fg": "#fef08a"},
+    "neon": {"name": "Cyan Neon", "primary": "&H00FFFFFF&", "outline": "&H00FFFF00&", "bord": 10, "shad": 0, "blur": 4, "css_bg": "rgba(6, 182, 212, 0.25)", "css_fg": "#06b6d4"},
+    "fire": {"name": "Fire Flame", "primary": "&H00FFFFFF&", "outline": "&H000055FF&", "bord": 12, "shad": 4, "blur": 1, "css_bg": "#ea580c", "css_fg": "#ffffff"},
+    "minimal": {"name": "Clean Dark", "primary": "&H00FFFFFF&", "outline": "&H00202020&", "bord": 10, "shad": 0, "blur": 0, "css_bg": "rgba(15, 23, 42, 0.9)", "css_fg": "#ffffff"},
+    "comic": {"name": "Comic Pop", "primary": "&H0000F0FF&", "outline": "&H00000000&", "bord": 14, "shad": 6, "blur": 0, "css_bg": "#facc15", "css_fg": "#000000"},
+    "matrix": {"name": "Cyber Green", "primary": "&H0033FF00&", "outline": "&H00003300&", "bord": 12, "shad": 0, "blur": 3, "css_bg": "#052e16", "css_fg": "#4ade80"},
+    "gold": {"name": "Gold Luxury", "primary": "&H0000D7FF&", "outline": "&H00000000&", "bord": 13, "shad": 4, "blur": 1, "css_bg": "#422006", "css_fg": "#fde047"},
+    "cyberpink": {"name": "Neon Pink / Barbie", "primary": "&H00FFFFFF&", "outline": "&H00FF00EA&", "bord": 12, "shad": 2, "blur": 3, "css_bg": "#831843", "css_fg": "#f472b6"},
+    "danger": {"name": "Danger Crimson", "primary": "&H00FFFFFF&", "outline": "&H000000EE&", "bord": 14, "shad": 2, "blur": 0, "css_bg": "#991b1b", "css_fg": "#ffffff"},
+    "ice": {"name": "Ice Glacier", "primary": "&H00FEF2E0&", "outline": "&H00FFAA00&", "bord": 11, "shad": 0, "blur": 3, "css_bg": "#082f49", "css_fg": "#38bdf8"},
+    "thunder": {"name": "MrBeast Thunder", "primary": "&H0000FFFF&", "outline": "&H00660000&", "bord": 14, "shad": 4, "blur": 0, "css_bg": "#172554", "css_fg": "#facc15"},
+    "arcade": {"name": "Synthwave Arcade", "primary": "&H00EA00FF&", "outline": "&H00FFFF00&", "bord": 13, "shad": 3, "blur": 2, "css_bg": "#3b0764", "css_fg": "#06b6d4"},
+    "emerald": {"name": "Mint Emerald", "primary": "&H0099FF33&", "outline": "&H00113300&", "bord": 12, "shad": 2, "blur": 2, "css_bg": "#064e3b", "css_fg": "#6ee7b7"},
 }
 
 STYLES = STYLE_DEFINITIONS
