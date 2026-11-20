@@ -39,6 +39,8 @@ data/
 *.jpg
 *.jpeg
 *.png
+!frontend/logo.png
+!frontend/logo_banner.png
 
 # Environment
 .env
