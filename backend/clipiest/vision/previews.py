@@ -1,13 +1,20 @@
 """Rapid early preview frames for Clipiest.
-Extracts 4 frames across the duration before full source video download completes.
+Extracts frames across the duration before or during full source video download.
 """
 import io
+import json
 import os
 import subprocess
 import urllib.request
+import uuid
 from pathlib import Path
+from typing import Optional
 from PIL import Image
 import yt_dlp
+
+from ..config import DATA_DIR
+from ..ai.games import detect_game
+from .facecam import detect_facecam
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -101,3 +108,135 @@ def extract_seek_frame(src_path: Path, sec: float, out_dir: Path) -> Path | None
         cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(src_path), "-frames:v", "1", "-vf", "scale=640:-2", str(out_p)]
         subprocess.run(cmd, capture_output=True, timeout=15, creationflags=NO_WINDOW)
     return out_p if out_p.exists() else None
+
+def preview_video_url(url: str, creator_id: Optional[str] = None) -> dict:
+    """Inspects a video URL (YouTube, Twitch, etc.), extracts metadata, game, and high-res preview frames."""
+    url = url.strip()
+    if not url:
+        raise ValueError("Video URL cannot be empty.")
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "socket_timeout": 15
+    }
+    with yt_dlp.YoutubeDL(opts) as y:
+        info = y.extract_info(url, download=False)
+
+    vid_id = info.get("id") or uuid.uuid4().hex[:8]
+    title = info.get("title") or "Video"
+    uploader = info.get("uploader") or info.get("channel") or ""
+    duration = float(info.get("duration") or 0)
+
+    if duration >= 3600:
+        dur_str = f"{int(duration // 3600)}h {int((duration % 3600) // 60)}m {int(duration % 60)}s"
+    elif duration > 0:
+        dur_str = f"{int(duration // 60)}m {int(duration % 60)}s"
+    else:
+        dur_str = "Live / Unknown"
+
+    game, hashtags = detect_game(title, uploader)
+
+    source_id = f"yt_{vid_id}"
+    rel_folder = source_id
+    if creator_id:
+        from ..creators import get_creator_dirs
+        _, c_videos_dir, _ = get_creator_dirs(creator_id)
+        folder = c_videos_dir / source_id
+        rel_folder = f"creators/{creator_id}/videos/{source_id}"
+    else:
+        folder = DATA_DIR / source_id
+
+    folder.mkdir(parents=True, exist_ok=True)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # 1. Download high-res cover thumbnail
+    thumb_candidates = [
+        f"https://i.ytimg.com/vi/{vid_id}/maxresdefault.jpg",
+        f"https://i.ytimg.com/vi/{vid_id}/hq720.jpg",
+        f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
+        info.get("thumbnail")
+    ]
+    main_img = None
+    cover_path = folder / "frame_0.jpg"
+    for tc in thumb_candidates:
+        if not tc:
+            continue
+        try:
+            req = urllib.request.Request(tc, headers=headers)
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = resp.read()
+                im = Image.open(io.BytesIO(data)).convert("RGB")
+                im.save(cover_path, quality=92)
+                main_img = im
+                break
+        except Exception:
+            continue
+
+    # 2. Download timeline frames (hq1, hq2, hq3 for YouTube)
+    saved_frames = [cover_path] if cover_path.exists() else []
+    for idx, num in enumerate(("1", "2", "3"), start=1):
+        sub_url = f"https://i.ytimg.com/vi/{vid_id}/hq{num}.jpg"
+        out_p = folder / f"frame_{idx}.jpg"
+        try:
+            req = urllib.request.Request(sub_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read()
+                im = Image.open(io.BytesIO(data)).convert("RGB")
+                im.save(out_p, quality=90)
+                saved_frames.append(out_p)
+        except Exception:
+            pass
+
+    # 3. Fallback duplicate frames if only cover exists
+    if len(saved_frames) < 2 and main_img:
+        for idx in (1, 2, 3):
+            out_p = folder / f"frame_{idx}.jpg"
+            if not out_p.exists():
+                try:
+                    main_img.save(out_p, quality=90)
+                    saved_frames.append(out_p)
+                except Exception:
+                    pass
+
+    w, h = (main_img.width, main_img.height) if main_img else (1920, 1080)
+
+    # 4. Detect facecam on frames
+    cam_box = {"x": 0.0, "y": 0.0, "w": 0.28, "h": 0.32}
+    try:
+        if saved_frames:
+            fc_res = detect_facecam(saved_frames)
+            if fc_res.get("detected") and fc_res.get("box"):
+                cam_box = fc_res["box"]
+    except Exception:
+        pass
+
+    # 5. Save source.json
+    frame_rels = [f"{rel_folder}/{f.name}" for f in sorted(folder.glob("frame_*.jpg"))]
+    meta_payload = {
+        "id": source_id,
+        "url": url,
+        "title": title,
+        "uploader": uploader,
+        "duration": duration,
+        "duration_formatted": dur_str,
+        "w": w,
+        "h": h,
+        "thumbnail": f"/media/{rel_folder}/frame_0.jpg",
+        "frames": frame_rels,
+        "game": game,
+        "hashtags": hashtags,
+        "cam": cam_box,
+        "creator": creator_id
+    }
+    (folder / "source.json").write_text(json.dumps(meta_payload, indent=2), encoding="utf-8")
+
+    if creator_id:
+        try:
+            from ..creators import log_creator_event
+            log_creator_event(creator_id, f"Inspected video '{title}' ({dur_str})", action="preview")
+        except Exception:
+            pass
+
+    return meta_payload

@@ -31,7 +31,7 @@ from .rendering.layouts import CATALOG, LAYOUT_IDS, geometry, text_positions, re
 from .rendering.captions import STYLES, write_subtitles
 from .rendering.render import render_clip, probe_video
 from .rendering.reedit import attach_reedit, find_file
-from .vision.previews import extract_storyboard, extract_seek_frame
+from .vision.previews import extract_storyboard, extract_seek_frame, preview_video_url
 from .vision.facecam import detect_facecam
 from .ai.learn import record_feedback, load_weights
 from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider
@@ -249,21 +249,63 @@ async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Fo
         **meta
     }
 
+@app.post("/preview/url")
+@app.post("/api/preview/url")
+def api_preview_url(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid JSON body.")
+    url = str(body.get("url", "")).strip()
+    if not url:
+        raise HTTPException(400, "Please provide a valid video URL.")
+    creator_id = body.get("creator_id") or body.get("creator")
+    try:
+        data = preview_video_url(url, creator_id=creator_id)
+        return data
+    except Exception as e:
+        raise HTTPException(400, f"Failed to inspect video: {e}")
+
 @app.get("/preview/{source_id}/storyboard")
 @app.get("/api/preview/{source_id}/storyboard")
 def get_storyboard(source_id: str):
     src = get_source_file(source_id)
-    if not src or not src.exists():
-        raise HTTPException(404, "Source video not found.")
-    meta = probe_video(src)
-    frames = extract_storyboard(src, meta["duration"], src.parent)
-    return {
-        "source_id": source_id,
-        "frames": [f.name for f in frames],
-        "duration": meta["duration"],
-        "w": meta["w"],
-        "h": meta["h"]
-    }
+    if src and src.exists():
+        meta = probe_video(src)
+        frames = extract_storyboard(src, meta["duration"], src.parent)
+        return {
+            "source_id": source_id,
+            "frames": [f.name for f in frames],
+            "duration": meta["duration"],
+            "w": meta["w"],
+            "h": meta["h"]
+        }
+    
+    # Check if this is a URL preview folder with frame images
+    folder = DATA_DIR / source_id
+    if not folder.exists():
+        for sub in DATA_DIR.iterdir():
+            if sub.is_dir() and (sub / source_id).exists():
+                folder = sub / source_id
+                break
+    
+    if folder.exists():
+        meta_f = folder / "source.json"
+        meta = {}
+        if meta_f.exists():
+            try:
+                meta = json.loads(meta_f.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        frame_files = sorted(folder.glob("frame_*.jpg"))
+        if frame_files:
+            return {
+                "source_id": source_id,
+                "frames": [f"{folder.name}/{f.name}" for f in frame_files],
+                "duration": meta.get("duration", 0),
+                "w": meta.get("w", 1920),
+                "h": meta.get("h", 1080)
+            }
+
+    raise HTTPException(404, "Source video not found.")
 
 @app.get("/preview/{source_id}/seek")
 @app.get("/api/preview/{source_id}/seek")
@@ -280,10 +322,23 @@ def get_seek(source_id: str, sec: float = 0.0):
 @app.post("/api/facecam/detect")
 def run_facecam_detection(source_id: str):
     src = get_source_file(source_id)
-    if not src or not src.exists():
-        raise HTTPException(404, "Source video not found.")
-    res = detect_facecam(src)
-    return res
+    if src and src.exists():
+        return detect_facecam(src)
+
+    # Check for image preview folder
+    folder = DATA_DIR / source_id
+    if not folder.exists():
+        for sub in DATA_DIR.iterdir():
+            if sub.is_dir() and (sub / source_id).exists():
+                folder = sub / source_id
+                break
+    
+    if folder.exists():
+        frame_files = sorted(folder.glob("frame_*.jpg"))
+        if frame_files:
+            return detect_facecam(frame_files)
+
+    raise HTTPException(404, "Source video not found.")
 
 # -------------------------------------------------------------
 # Layouts & Styling Endpoints

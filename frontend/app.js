@@ -3,6 +3,15 @@
  */
 const $ = (id) => document.getElementById(id);
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // Application State
 const appState = {
   configured: false,
@@ -543,19 +552,108 @@ function setupControls() {
     }
   };
 
+  // URL Enter key shortcut
+  $('video-url').onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('preview-btn').click();
+    }
+  };
+
   // Preview button
   $('preview-btn').onclick = async () => {
     const url = $('video-url').value.trim();
     if (!url) return alert('Enter a video URL first.');
-    $('import-status').hidden = false;
-    $('import-status').textContent = 'Fetching video information...';
+
+    const btn = $('preview-btn');
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin">⟳</span> Fetching Preview...';
+
+    const statusEl = $('import-status');
+    statusEl.hidden = false;
+    statusEl.className = 'status-message active-loading';
+    statusEl.innerHTML = '<span class="status-icon spin">⟳</span> Contacting video stream, analyzing metadata, and extracting high-res preview frames...';
+
+    const selectedCreator = $('job-creator-select')?.value || '';
+
     try {
-      // Create quick pipeline job to fetch metadata
+      const res = await api('/preview/url', {
+        method: 'POST',
+        body: JSON.stringify({ url, creator: selectedCreator })
+      });
+
+      if (!res || !res.id) {
+        throw new Error(res?.detail || res?.error || 'Failed to inspect video');
+      }
+
+      appState.sourceId = res.id;
       appState.sourceUrl = url;
-      $('import-status').textContent = 'Link set. Ready to process clips.';
-      $('source-status-badge').textContent = 'URL Linked';
+      appState.duration = res.duration || 0;
+      appState.sourceWidth = res.w || 1920;
+      appState.sourceHeight = res.h || 1080;
+
+      if (res.cam) {
+        appState.rect.cam = res.cam;
+      }
+
+      // Update time inputs and hooks
+      $('time-start').value = 0;
+      $('time-end').value = Math.min(60, Math.round(res.duration || 30));
+      if (res.title && !$('hook-input').value) {
+        $('hook-input').value = res.title.slice(0, 50);
+      }
+
+      // Update badge
+      const durStr = res.duration_formatted || `${Math.round(res.duration)}s`;
+      $('source-status-badge').textContent = `${res.game || 'Video'} · ${durStr} · ${appState.sourceWidth}x${appState.sourceHeight}`;
+
+      // Show success status
+      statusEl.className = 'status-message active-success';
+      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Interactive framing active.`;
+
+      // Hide canvas placeholder
+      $('canvas-placeholder').hidden = true;
+
+      // Populate storyboard reel
+      if (res.frames && res.frames.length) {
+        $('storyboard-reel').hidden = false;
+        const reel = $('reel-frames');
+        reel.innerHTML = '';
+        res.frames.forEach((frameRel, idx) => {
+          const frameUrl = frameRel.startsWith('/media/') ? frameRel : `/media/${frameRel}`;
+          const b = document.createElement('button');
+          b.className = `reel-frame-btn ${idx === 0 ? 'active' : ''}`;
+          b.title = `Frame #${idx + 1}`;
+          b.innerHTML = `<img src="${frameUrl}" alt="Frame ${idx + 1}"><span class="reel-frame-badge">#${idx + 1}</span>`;
+          b.onclick = () => {
+            document.querySelectorAll('.reel-frame-btn').forEach(el => el.classList.remove('active'));
+            b.classList.add('active');
+            const img = new Image();
+            img.src = frameUrl;
+            img.onload = () => {
+              appState.currentImageSource = img;
+            };
+          };
+          reel.appendChild(b);
+        });
+      }
+
+      // Load main thumbnail image into canvas immediately
+      const thumbUrl = res.thumbnail.startsWith('/media/') ? res.thumbnail : `/media/${res.thumbnail}`;
+      const img = new Image();
+      img.src = thumbUrl;
+      img.onload = () => {
+        appState.currentImageSource = img;
+      };
+
     } catch (e) {
-      $('import-status').textContent = 'Error: ' + e.message;
+      statusEl.className = 'status-message active-error';
+      statusEl.innerHTML = `❌ Error fetching preview: ${escapeHtml(e.message)}`;
+      alert('Could not fetch preview: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
     }
   };
 
@@ -569,7 +667,8 @@ function setupControls() {
       const res = await api(`/preview/${appState.sourceId}/autocam`, { method: 'POST' });
       if (res.detected && res.box) {
         appState.rect.cam = res.box;
-        alert(`Facecam detected with ${(res.confidence * 100).toFixed(0)}% confidence!`);
+        const confPct = typeof res.confidence === 'number' ? Math.round(res.confidence * 100) : (res.confidence === 'high' ? 95 : 75);
+        alert(`Facecam detected with ${confPct}% confidence!`);
       } else {
         alert('No static facecam region detected in video.');
       }

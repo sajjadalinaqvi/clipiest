@@ -67,13 +67,37 @@ def _peaks(profile: np.ndarray, limit: int = 10) -> list[tuple[int, float]]:
             out.append((i, float(profile[i] / med)))
     return sorted(out, key=lambda p: -p[1])[:limit]
 
-def detect_facecam(path: Path) -> dict:
-    """Detects webcam position in a video.
-    Returns: {'detected': bool, 'box': {'x': .., 'y': .., 'w': .., 'h': ..}, 'confidence': 'high'|'low'}
+def detect_facecam(target) -> dict:
+    """Detects webcam position in a video, image list, or frame directory.
+    Returns: {'detected': bool, 'box': {'x': .., 'y': .., 'w': .., 'h': ..}, 'confidence': float}
     """
-    frames = _extract_frames(path)
-    if len(frames) < 4:
-        return {"detected": False, "box": None, "confidence": "none"}
+    frames = None
+    if isinstance(target, np.ndarray):
+        frames = target
+    elif isinstance(target, (list, tuple)):
+        loaded = []
+        from PIL import Image
+        for item in target:
+            try:
+                im = Image.open(Path(item)).convert("L").resize((W, H))
+                loaded.append(np.array(im, dtype=np.uint8))
+            except Exception:
+                pass
+        if len(loaded) >= 2:
+            frames = np.stack(loaded, axis=0)
+    elif isinstance(target, (str, Path)):
+        p = Path(target)
+        if p.is_dir():
+            img_files = sorted(p.glob("frame_*.jpg")) or sorted(p.glob("*.jpg"))
+            if img_files:
+                return detect_facecam(img_files)
+        elif p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            return detect_facecam([p])
+        else:
+            frames = _extract_frames(p)
+
+    if frames is None or len(frames) < 2:
+        return {"detected": False, "box": None, "confidence": 0.0}
     
     gx, gy = _profiles(frames)
     vpeaks = _peaks(gx)
@@ -126,7 +150,7 @@ def detect_facecam(path: Path) -> dict:
                     })
 
     if not candidates:
-        return {"detected": False, "box": None, "confidence": "none"}
+        return {"detected": False, "box": None, "confidence": 0.0}
         
     best = max(candidates, key=lambda c: c["score"])
     return {
@@ -137,5 +161,5 @@ def detect_facecam(path: Path) -> dict:
             "w": best["w"],
             "h": best["h"]
         },
-        "confidence": "high" if best["score"] > 3.0 else "medium"
+        "confidence": 0.92 if best["score"] > 3.0 else 0.75
     }
