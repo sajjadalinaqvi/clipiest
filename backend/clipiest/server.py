@@ -37,6 +37,7 @@ from .ai.learn import record_feedback, load_weights
 from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider
 from .live.session import LiveClipManager
 from .storage.manager import get_disk_info, open_folder_in_os
+from . import creators
 
 app = FastAPI(title="Clipiest API", version="1.0.0")
 
@@ -68,6 +69,13 @@ def find_clip_file(filename: str) -> Optional[Path]:
                 cand = sub / filename
                 if cand.exists():
                     return cand
+                if sub.name == "creators":
+                    for c_dir in sub.iterdir():
+                        if c_dir.is_dir():
+                            for child_name in ("clips", "videos"):
+                                cand2 = c_dir / child_name / filename
+                                if cand2.exists():
+                                    return cand2
     except OSError:
         pass
     return None
@@ -77,6 +85,64 @@ def find_clip_id(id_str: str, suffix: str = ".mp4") -> Optional[Path]:
 
 def get_source_file(source_id: str) -> Optional[Path]:
     return find_clip_file(f"{source_id}.mp4")
+
+# -------------------------------------------------------------
+# Content Creator Workspaces Endpoints
+# -------------------------------------------------------------
+@app.get("/api/creators")
+def api_list_creators():
+    return creators.list_creators()
+
+@app.post("/api/creators")
+def api_create_creator(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid JSON body.")
+    try:
+        return creators.create_creator(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.get("/api/creators/{cid}")
+def api_get_creator(cid: str):
+    c = creators.get_creator(cid)
+    if not c:
+        raise HTTPException(404, f"Creator '{cid}' not found.")
+    return c
+
+@app.put("/api/creators/{cid}")
+def api_update_creator(cid: str, body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid JSON body.")
+    try:
+        return creators.update_creator(cid, body)
+    except KeyError:
+        raise HTTPException(404, f"Creator '{cid}' not found.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.delete("/api/creators/{cid}")
+def api_delete_creator(cid: str):
+    ok = creators.delete_creator(cid)
+    if not ok:
+        raise HTTPException(404, f"Creator '{cid}' not found.")
+    return {"deleted": True, "id": cid}
+
+@app.post("/api/creators/{cid}/open-folder")
+def api_open_creator_folder(cid: str):
+    ok = creators.open_creator_folder(cid)
+    return {"success": ok, "id": cid}
+
+@app.get("/api/creators/{cid}/clips")
+def api_get_creator_clips(cid: str):
+    return creators.get_creator_clips(cid)
+
+@app.get("/api/creators/{cid}/videos")
+def api_get_creator_videos(cid: str):
+    return creators.get_creator_videos(cid)
+
+@app.get("/api/creators/{cid}/logs")
+def api_get_creator_logs(cid: str, limit: int = 50):
+    return creators.get_creator_logs(cid, limit=limit)
 
 # -------------------------------------------------------------
 # Configuration & Setup Gate Endpoints
@@ -145,23 +211,32 @@ def api_open_folder():
 # -------------------------------------------------------------
 @app.post("/upload")
 @app.post("/api/upload")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Form(None)):
     source_id = uuid.uuid4().hex[:12]
     import re
     safe_name = re.sub(r"[^\w\- ]", "_", Path(file.filename or "upload").stem).strip()[:40].strip(" _") or "upload"
-    vdir = DATA_DIR / f"{safe_name}_{source_id[:8]}"
-    vdir.mkdir(parents=True, exist_ok=True)
     
-    target_path = vdir / f"{source_id}.mp4"
+    if creator:
+        c_root, c_videos, c_clips = creators.get_creator_dirs(creator)
+        vdir = c_videos
+        target_path = vdir / f"{source_id}.mp4"
+    else:
+        vdir = DATA_DIR / f"{safe_name}_{source_id[:8]}"
+        vdir.mkdir(parents=True, exist_ok=True)
+        target_path = vdir / f"{source_id}.mp4"
+    
     try:
         with target_path.open("wb") as out:
             while chunk := await file.read(4 * 1024 * 1024):
                 out.write(chunk)
         meta = probe_video(target_path)
+        if creator:
+            creators.log_creator_event(creator, f"Uploaded video '{file.filename}' ({round(meta.get('duration', 0))}s)", action="upload")
     except Exception as e:
         target_path.unlink(missing_ok=True)
         try:
-            vdir.rmdir()
+            if not creator:
+                vdir.rmdir()
         except OSError:
             pass
         raise HTTPException(400, f"Invalid or unreadable video file: {e}")
@@ -170,6 +245,7 @@ async def upload_video(file: UploadFile = File(...)):
         "id": source_id,
         "filename": file.filename,
         "path": str(target_path),
+        "creator": creator,
         **meta
     }
 
@@ -260,13 +336,15 @@ def create_clipping_job(body: dict):
         raise HTTPException(400, "Provide a video URL or an uploaded video ID.")
     
     job_id = uuid.uuid4().hex[:12]
+    creator_ref = body.get("creator_id") or body.get("creator")
     state[job_id] = {
         "job_id": job_id,
         "status": "queued",
         "progress": 0.0,
         "stage": "Waiting in queue...",
         "created_at": time.time(),
-        "clips": []
+        "clips": [],
+        "creator": creator_ref
     }
     
     t = threading.Thread(target=run_clip_pipeline, args=(body, state, job_id), daemon=True)
@@ -401,18 +479,24 @@ def manual_export(body: dict):
 # -------------------------------------------------------------
 @app.get("/library")
 @app.get("/api/library")
-def get_library():
+def get_library(creator: Optional[str] = None):
     records = []
     json_files = list(DATA_DIR.glob("*.json"))
     try:
         for sub in DATA_DIR.iterdir():
-            if sub.is_dir() and sub.name != "models":
+            if sub.is_dir() and sub.name not in ("models", "creators"):
                 json_files.extend(sub.glob("*.json"))
+            elif sub.is_dir() and sub.name == "creators":
+                for c_dir in sub.iterdir():
+                    if c_dir.is_dir():
+                        cdir_clips = c_dir / "clips"
+                        if cdir_clips.exists():
+                            json_files.extend(cdir_clips.glob("*.json"))
     except OSError:
         pass
         
     for f in json_files:
-        if f.name.endswith((".state.json", ".request.json", ".weights.json")):
+        if f.name.endswith((".state.json", ".request.json", ".weights.json", "creator.json")):
             continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
@@ -420,7 +504,23 @@ def get_library():
             result = data.get("result", {})
             if result.get("status") == "done" and mp4.exists():
                 settings = data.get("settings", {})
-                folder_name = f.parent.name if f.parent != DATA_DIR else ""
+                clip_creator = settings.get("creator")
+                if not clip_creator and "creators" in f.parts:
+                    try:
+                        idx = f.parts.index("creators")
+                        clip_creator = f.parts[idx + 1]
+                    except (ValueError, IndexError):
+                        pass
+                if creator and clip_creator != creator:
+                    continue
+
+                try:
+                    rel_path = f.relative_to(DATA_DIR)
+                    rel_folder = str(rel_path.parent).replace("\\", "/")
+                except ValueError:
+                    rel_folder = ""
+                folder_prefix = f"/media/{rel_folder}" if rel_folder and rel_folder != "." else "/media"
+
                 records.append({
                     "id": f.stem,
                     "title": settings.get("title") or "Clipiest Clip",
@@ -429,11 +529,12 @@ def get_library():
                     "caption_style": settings.get("caption_style", "bounce"),
                     "created": f.stat().st_mtime,
                     "duration": result.get("duration", 0),
-                    "file": f"/media/{folder_name}/{f.stem}.mp4" if folder_name else f"/media/{f.stem}.mp4",
-                    "cover": f"/media/{folder_name}/{f.stem}.jpg" if (f.with_suffix(".jpg")).exists() else None,
+                    "file": f"{folder_prefix}/{f.stem}.mp4",
+                    "cover": f"{folder_prefix}/{f.stem}.jpg" if (f.with_suffix(".jpg")).exists() else None,
                     "srt": f"/text/{f.stem}/srt",
                     "settings": settings,
-                    "folder": folder_name
+                    "folder": rel_folder,
+                    "creator": clip_creator
                 })
         except Exception:
             continue

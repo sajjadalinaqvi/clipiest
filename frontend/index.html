@@ -44,6 +44,16 @@
         </button>
       </nav>
 
+      <!-- Creators Workspace Section -->
+      <div class="sidebar-section-divider"></div>
+      <div class="sidebar-section-header">
+        <span class="section-title">CREATORS</span>
+        <button id="sidebar-add-creator-btn" class="btn-icon-add" title="Create New Creator Workspace">＋</button>
+      </div>
+      <div id="sidebar-creators-list" class="sidebar-creators-list">
+        <!-- Dynamic list of creators -->
+      </div>
+
       <div class="sidebar-telemetry">
         <div class="telemetry-item">
           <span class="lbl">GPU ACCEL</span>
@@ -86,6 +96,22 @@
             <span class="step-num">01</span>
             <h3>Source Video</h3>
           </div>
+
+          <!-- Content Creator Workspace Assignment -->
+          <div class="creator-assign-bar">
+            <div class="creator-assign-label">
+              <span class="icon">👤</span>
+              <span>Content Creator:</span>
+            </div>
+            <div class="creator-assign-controls">
+              <select id="job-creator-select" class="form-select-sm">
+                <option value="">🌐 Global Workspace (No Creator)</option>
+              </select>
+              <button type="button" id="quick-add-creator-btn" class="btn-secondary btn-xs">＋ New Creator</button>
+            </div>
+            <span id="creator-workspace-hint" class="workspace-hint">Videos &amp; clips will be saved in data/</span>
+          </div>
+
           <div class="import-grid">
             <div class="url-input-wrap">
               <input type="url" id="video-url" placeholder="Paste YouTube, Twitch replay, or Kick link (e.g. https://www.youtube.com/watch?v=...)">
@@ -383,7 +409,117 @@
           </div>
         </div>
       </section>
+
+      <!-- TAB 6: CREATOR WORKSPACE VIEW -->
+      <section id="tab-creator" class="tab-pane">
+        <div class="creator-hero">
+          <div class="creator-hero-main">
+            <div id="creator-hero-avatar" class="creator-hero-avatar">C</div>
+            <div class="creator-hero-details">
+              <div class="creator-hero-title-row">
+                <h2 id="creator-hero-name">Creator Name</h2>
+                <span id="creator-hero-game" class="badge badge-game">Gaming</span>
+                <a id="creator-hero-channel" href="#" target="_blank" class="channel-link" hidden>Channel ↗</a>
+              </div>
+              <p id="creator-hero-notes" class="creator-hero-notes">Custom creator workspace.</p>
+              <div class="creator-meta-pills">
+                <span class="meta-pill">📁 Folder: <code id="creator-folder-label">creators/name</code></span>
+                <span class="meta-pill">✂️ Layout: <b id="creator-layout-label">Stack</b></span>
+                <span class="meta-pill">💬 Style: <b id="creator-style-label">Bounce</b></span>
+                <span class="meta-pill">🎬 Clips: <b id="creator-clips-count">0</b></span>
+                <span class="meta-pill">📼 Videos: <b id="creator-videos-count">0</b></span>
+                <span class="meta-pill">💾 Storage: <b id="creator-disk-label">0 MB</b></span>
+              </div>
+            </div>
+          </div>
+          <div class="creator-hero-actions">
+            <button id="creator-open-folder-btn" class="btn-secondary">📂 Open Creator Folder</button>
+            <button id="creator-clip-now-btn" class="btn-primary btn-glow">⚡ Clip for this Creator</button>
+            <button id="creator-edit-btn" class="btn-ghost">⚙️ Edit</button>
+            <button id="creator-delete-btn" class="btn-ghost btn-danger">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <!-- Sub Tabs: Clips | Videos | Activity Log -->
+        <div class="sub-nav-tabs">
+          <button class="sub-tab-btn active" data-subtab="creator-clips" id="subtab-btn-clips">✂️ Generated Clips (<span id="creator-sub-clips-count">0</span>)</button>
+          <button class="sub-tab-btn" data-subtab="creator-videos" id="subtab-btn-videos">📼 Source Videos (<span id="creator-sub-videos-count">0</span>)</button>
+          <button class="sub-tab-btn" data-subtab="creator-logs" id="subtab-btn-logs">📜 Activity History</button>
+        </div>
+
+        <!-- Sub Pane 1: Clips Gallery -->
+        <div id="subpane-creator-clips" class="subpane active">
+          <div id="creator-clips-grid" class="clips-gallery">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Sub Pane 2: Source Videos -->
+        <div id="subpane-creator-videos" class="subpane" hidden>
+          <div id="creator-videos-list" class="creator-videos-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Sub Pane 3: Activity Log -->
+        <div id="subpane-creator-logs" class="subpane" hidden>
+          <div id="creator-logs-list" class="creator-logs-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+
+  <!-- CREATOR WORKSPACE MODAL (Create & Edit) -->
+  <div id="creator-modal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="creator-modal-title">Create Content Creator Workspace</h3>
+        <button id="creator-modal-close" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Each creator gets an isolated workspace with dedicated <code>videos/</code> and <code>clips/</code> folders on disk, preferred framing defaults, and independent activity history.</p>
+        
+        <input type="hidden" id="creator-edit-id" value="">
+        <div class="cfg-field">
+          <label for="creator-input-name">Creator Name *</label>
+          <input type="text" id="creator-input-name" placeholder="e.g. Ninja, Kai Cenat, Shroud, The Daily Podcast">
+        </div>
+        <div class="cfg-field">
+          <label for="creator-input-channel">Channel or Social Link (YouTube, Twitch, Kick)</label>
+          <input type="url" id="creator-input-channel" placeholder="https://youtube.com/@channel or https://twitch.tv/channel">
+        </div>
+        <div class="form-row-2">
+          <div class="cfg-field">
+            <label for="creator-input-layout">Default Framing Layout</label>
+            <select id="creator-input-layout"></select>
+          </div>
+          <div class="cfg-field">
+            <label for="creator-input-style">Default Caption Style</label>
+            <select id="creator-input-style"></select>
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="cfg-field">
+            <label for="creator-input-game">Default Game / Topic Tag</label>
+            <input type="text" id="creator-input-game" placeholder="e.g. Valorant, Just Chatting, GTA V">
+          </div>
+          <div class="cfg-field">
+            <label for="creator-input-triggers">Viral Trigger Words</label>
+            <input type="text" id="creator-input-triggers" value="clip that, clip it, insane, clutch, omg">
+          </div>
+        </div>
+        <div class="cfg-field">
+          <label for="creator-input-notes">Notes / Style Preferences</label>
+          <textarea id="creator-input-notes" rows="2" placeholder="e.g. High intensity gaming moments, keep clips under 45s"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="creator-modal-cancel" class="btn-ghost">Cancel</button>
+        <button id="creator-modal-save" class="btn-primary btn-glow">Save Creator Workspace</button>
+      </div>
+    </div>
   </div>
 
   <!-- SETUP GATE MODAL (Blocks main app until LLM is configured) -->

@@ -28,7 +28,9 @@ const appState = {
   pollTimer: null,
   liveSessionId: null,
   livePollTimer: null,
-  currentImageSource: null
+  currentImageSource: null,
+  creators: [],
+  activeCreatorId: null
 };
 
 // Provider Presets
@@ -128,11 +130,13 @@ async function init() {
   setupCanvasEvents();
   setupControls();
   setupConfigurationEvents();
+  setupCreatorEvents();
   
   await Promise.all([
     checkInitialConfiguration(),
     loadLayouts(),
     loadCaptionStyles(),
+    loadCreators(),
     updateTelemetry(),
     loadLibrary()
   ]);
@@ -341,17 +345,23 @@ function setupConfigurationEvents() {
 // -------------------------------------------------------------
 // Navigation & Tabs
 // -------------------------------------------------------------
+function switchTab(tabName) {
+  document.querySelectorAll('.nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + tabName);
+  });
+  appState.currentTab = tabName;
+  if (tabName !== 'creator') {
+    document.querySelectorAll('.sidebar-creator-item').forEach(el => el.classList.remove('active'));
+  }
+}
+
 function setupNavigation() {
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.onclick = () => {
-      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      
-      btn.classList.add('active');
-      const tabId = 'tab-' + btn.dataset.tab;
-      $(tabId).classList.add('active');
-      appState.currentTab = btn.dataset.tab;
-
+      switchTab(btn.dataset.tab);
       if (btn.dataset.tab === 'library') {
         loadLibrary();
       }
@@ -590,6 +600,10 @@ function setupControls() {
 async function handleFileUpload(file) {
   const formData = new FormData();
   formData.append('file', file);
+  const selectedCreator = $('job-creator-select')?.value || '';
+  if (selectedCreator) {
+    formData.append('creator', selectedCreator);
+  }
   $('import-status').hidden = false;
   $('import-status').textContent = 'Uploading video file...';
 
@@ -811,7 +825,8 @@ async function triggerMakeClips() {
     caption_style: appState.captionStyle,
     top: appState.topH,
     cam: appState.rect.cam,
-    game: appState.rect.game
+    game: appState.rect.game,
+    creator_id: $('job-creator-select')?.value || undefined
   };
 
   $('execution-panel').hidden = false;
@@ -884,9 +899,10 @@ function renderClipCards(clips, container) {
   clips.forEach(clip => {
     const card = document.createElement('div');
     card.className = 'clip-card';
+    const videoSrc = clip.file?.startsWith('/') ? clip.file : `/media/${clip.file}`;
     card.innerHTML = `
       <div class="clip-video-wrap">
-        <video src="/media/${clip.file}" controls preload="metadata"></video>
+        <video src="${videoSrc}" controls preload="metadata"></video>
       </div>
       <div class="clip-info">
         <div class="clip-title-row">
@@ -895,7 +911,7 @@ function renderClipCards(clips, container) {
         </div>
         ${clip.hook ? `<div class="clip-hook">"${clip.hook}"</div>` : ''}
         <div class="clip-actions">
-          <a href="/media/${clip.file}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
+          <a href="${videoSrc}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
           <a href="/text/${clip.id}/srt" class="btn-secondary btn-sm">↓ SRT</a>
         </div>
         <div class="stars-rating" data-id="${clip.id}">
@@ -1082,6 +1098,415 @@ async function openSavedClip(clipId) {
   } catch (e) {
     alert('Failed to load clip for re-editing: ' + e.message);
   }
+}
+
+// -------------------------------------------------------------
+// Content Creator Workspaces
+// -------------------------------------------------------------
+async function loadCreators() {
+  try {
+    const list = await api('/api/creators');
+    appState.creators = Array.isArray(list) ? list : [];
+    renderSidebarCreators();
+    updateCreatorSelectOptions();
+  } catch (e) {
+    console.warn('Failed to load creators:', e);
+  }
+}
+
+function renderSidebarCreators() {
+  const container = $('sidebar-creators-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (appState.creators.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:11px;color:var(--text-muted);padding:6px 8px;';
+    empty.textContent = 'No creators yet. Click ＋ to add.';
+    container.appendChild(empty);
+    return;
+  }
+
+  appState.creators.forEach(c => {
+    const item = document.createElement('button');
+    item.className = 'sidebar-creator-item' + (appState.activeCreatorId === c.id ? ' active' : '');
+    item.dataset.cid = c.id;
+    const initial = (c.name || 'C').charAt(0).toUpperCase();
+    item.innerHTML = `
+      <div class="sidebar-creator-avatar">${initial}</div>
+      <span class="sidebar-creator-name">${c.name}</span>
+      <span class="sidebar-creator-badge">${c.clip_count || 0}</span>
+    `;
+    item.onclick = () => openCreatorWorkspace(c.id);
+    container.appendChild(item);
+  });
+}
+
+function updateCreatorSelectOptions() {
+  const sel = $('job-creator-select');
+  if (!sel) return;
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="">🌐 Global Workspace (No Creator)</option>';
+
+  appState.creators.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `👤 ${c.name} (${c.clip_count || 0} clips)`;
+    sel.appendChild(opt);
+  });
+
+  if (curVal && appState.creators.some(c => c.id === curVal)) {
+    sel.value = curVal;
+  }
+}
+
+function onJobCreatorSelectChange() {
+  const sel = $('job-creator-select');
+  const hint = $('creator-workspace-hint');
+  if (!sel || !hint) return;
+  const cid = sel.value;
+  if (!cid) {
+    hint.textContent = 'Videos & clips will be saved in data/';
+    return;
+  }
+  const creator = appState.creators.find(c => c.id === cid);
+  if (creator) {
+    hint.textContent = `Saved in data/creators/${cid}/ (videos/ & clips/)`;
+    if (creator.default_layout) {
+      appState.layout = creator.default_layout;
+      document.querySelectorAll('.layout-card').forEach(c => c.classList.toggle('active', c.dataset.layout === creator.default_layout));
+    }
+    if (creator.default_caption_style) {
+      appState.captionStyle = creator.default_caption_style;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.toggle('active', c.dataset.style === creator.default_caption_style));
+    }
+  }
+}
+
+async function openCreatorWorkspace(cid) {
+  appState.activeCreatorId = cid;
+  switchTab('creator');
+  document.querySelectorAll('.sidebar-creator-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.cid === cid);
+  });
+
+  try {
+    const c = await api(`/api/creators/${cid}`);
+    $('creator-hero-name').textContent = c.name;
+    $('creator-hero-avatar').textContent = (c.name || 'C').charAt(0).toUpperCase();
+    $('creator-folder-label').textContent = `creators/${c.id}`;
+    $('creator-layout-label').textContent = c.default_layout || 'stack';
+    $('creator-style-label').textContent = c.default_caption_style || 'bounce';
+    $('creator-clips-count').textContent = c.clip_count || 0;
+    $('creator-sub-clips-count').textContent = c.clip_count || 0;
+    $('creator-videos-count').textContent = c.video_count || 0;
+    $('creator-sub-videos-count').textContent = c.video_count || 0;
+    $('creator-disk-label').textContent = `${c.disk_mb || 0} MB`;
+    $('creator-hero-game').textContent = c.game || 'Content Creator';
+
+    const chLink = $('creator-hero-channel');
+    if (c.channel) {
+      chLink.href = c.channel;
+      chLink.hidden = false;
+    } else {
+      chLink.hidden = true;
+    }
+
+    $('creator-hero-notes').textContent = c.notes || `Dedicated workspace for ${c.name}. Source videos and rendered clips are organized into separate folders.`;
+
+    await Promise.all([
+      loadCreatorClips(cid),
+      loadCreatorVideos(cid),
+      loadCreatorLogs(cid)
+    ]);
+  } catch (e) {
+    alert('Failed to load creator workspace: ' + e.message);
+  }
+}
+
+async function loadCreatorClips(cid) {
+  const container = $('creator-clips-grid');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-muted);padding:16px;">Loading clips...</div>';
+
+  try {
+    const clips = await api(`/api/creators/${cid}/clips`);
+    $('creator-clips-count').textContent = clips.length;
+    $('creator-sub-clips-count').textContent = clips.length;
+    container.innerHTML = '';
+
+    if (clips.length === 0) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+          <div style="font-size: 32px; margin-bottom: 8px;">🎬</div>
+          <p>No clips generated yet in this creator's workspace.</p>
+          <button class="btn-primary btn-sm" style="margin-top: 10px;" onclick="$('creator-clip-now-btn').click();">⚡ Make Clips for this Creator</button>
+        </div>
+      `;
+      return;
+    }
+
+    clips.forEach(clip => {
+      const card = document.createElement('div');
+      card.className = 'clip-card';
+      const videoSrc = clip.file.startsWith('/') ? clip.file : `/media/${clip.file}`;
+      card.innerHTML = `
+        <div class="clip-video-wrap">
+          <video src="${videoSrc}" controls preload="metadata"></video>
+        </div>
+        <div class="clip-info">
+          <div class="clip-title-row">
+            <h4>${clip.title || 'Clip'}</h4>
+            <span class="viral-badge">${(clip.duration || 0).toFixed(0)}s</span>
+          </div>
+          ${clip.hook ? `<div class="clip-hook">"${clip.hook}"</div>` : ''}
+          <div class="clip-actions">
+            <a href="${videoSrc}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
+            <button class="btn-ghost btn-sm re-edit-btn" data-id="${clip.id}">Re-edit</button>
+            <button class="btn-ghost btn-sm btn-danger del-clip-btn" data-id="${clip.id}">✕</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.re-edit-btn').onclick = () => openSavedClip(clip.id);
+      card.querySelector('.del-clip-btn').onclick = async () => {
+        if (!confirm('Delete this clip?')) return;
+        await api(`/api/library/${clip.id}`, { method: 'DELETE' });
+        card.remove();
+        loadCreatorClips(cid);
+        loadCreators();
+      };
+
+      container.appendChild(card);
+    });
+  } catch (e) {
+    container.innerHTML = `<div style="color:#ef4444;padding:16px;">Failed to load clips: ${e.message}</div>`;
+  }
+}
+
+async function loadCreatorVideos(cid) {
+  const container = $('creator-videos-list');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-muted);padding:16px;">Loading source videos...</div>';
+
+  try {
+    const videos = await api(`/api/creators/${cid}/videos`);
+    $('creator-videos-count').textContent = videos.length;
+    $('creator-sub-videos-count').textContent = videos.length;
+    container.innerHTML = '';
+
+    if (videos.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+          <div style="font-size: 32px; margin-bottom: 8px;">📼</div>
+          <p>No archive videos in this creator's <code>videos/</code> folder yet.</p>
+          <p style="font-size: 12px; margin-top: 6px;">Upload footage with this creator selected to archive it in their dedicated folder.</p>
+        </div>
+      `;
+      return;
+    }
+
+    videos.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'creator-video-row';
+      const modDate = new Date(v.modified * 1000).toLocaleString();
+      row.innerHTML = `
+        <div>
+          <div class="creator-video-title">${v.name}</div>
+          <div class="creator-video-meta">${v.size_mb} MB · Modified ${modDate}</div>
+        </div>
+        <div>
+          <button class="btn-secondary btn-sm clip-this-vid-btn">✂️ Clip This Video</button>
+        </div>
+      `;
+
+      row.querySelector('.clip-this-vid-btn').onclick = () => {
+        appState.sourceId = v.stem;
+        $('job-creator-select').value = cid;
+        onJobCreatorSelectChange();
+        $('canvas-placeholder').hidden = true;
+        $('source-status-badge').textContent = `Creator Video: ${v.name}`;
+        switchTab('create');
+        loadStoryboard(v.stem);
+      };
+
+      container.appendChild(row);
+    });
+  } catch (e) {
+    container.innerHTML = `<div style="color:#ef4444;padding:16px;">Failed to load videos: ${e.message}</div>`;
+  }
+}
+
+async function loadCreatorLogs(cid) {
+  const container = $('creator-logs-list');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-muted);padding:16px;">Loading logs...</div>';
+
+  try {
+    const logs = await api(`/api/creators/${cid}/logs`);
+    container.innerHTML = '';
+
+    if (logs.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);padding:16px;">No activity logged yet.</div>';
+      return;
+    }
+
+    logs.forEach(l => {
+      const item = document.createElement('div');
+      item.className = 'creator-log-item';
+      const timeStr = new Date(l.time * 1000).toLocaleTimeString();
+      item.innerHTML = `
+        <span class="creator-log-time">${timeStr}</span>
+        <span class="creator-log-action">${l.action || 'INFO'}</span>
+        <span class="creator-log-msg">${l.msg}</span>
+      `;
+      container.appendChild(item);
+    });
+  } catch (e) {
+    container.innerHTML = `<div style="color:#ef4444;padding:16px;">Failed to load logs: ${e.message}</div>`;
+  }
+}
+
+function openCreatorModal(creatorData = null) {
+  const layoutSel = $('creator-input-layout');
+  layoutSel.innerHTML = '';
+  appState.layoutsCatalog.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = `${l.icon || ''} ${l.name}`;
+    layoutSel.appendChild(opt);
+  });
+
+  const styleSel = $('creator-input-style');
+  styleSel.innerHTML = '';
+  appState.captionStylesList.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.icon || ''} ${s.name}`;
+    styleSel.appendChild(opt);
+  });
+
+  if (creatorData) {
+    $('creator-modal-title').textContent = 'Edit Content Creator Workspace';
+    $('creator-edit-id').value = creatorData.id;
+    $('creator-input-name').value = creatorData.name || '';
+    $('creator-input-channel').value = creatorData.channel || '';
+    $('creator-input-layout').value = creatorData.default_layout || 'stack';
+    $('creator-input-style').value = creatorData.default_caption_style || 'bounce';
+    $('creator-input-game').value = creatorData.game || '';
+    $('creator-input-triggers').value = creatorData.trigger_words || '';
+    $('creator-input-notes').value = creatorData.notes || '';
+  } else {
+    $('creator-modal-title').textContent = 'Create Content Creator Workspace';
+    $('creator-edit-id').value = '';
+    $('creator-input-name').value = '';
+    $('creator-input-channel').value = '';
+    $('creator-input-layout').value = 'stack';
+    $('creator-input-style').value = 'bounce';
+    $('creator-input-game').value = '';
+    $('creator-input-triggers').value = 'clip that, clip it, insane, clutch, omg';
+    $('creator-input-notes').value = '';
+  }
+
+  $('creator-modal').hidden = false;
+}
+
+function closeCreatorModal() {
+  $('creator-modal').hidden = true;
+}
+
+async function saveCreator() {
+  const name = $('creator-input-name').value.trim();
+  if (!name) return alert('Please enter a creator name.');
+
+  const editId = $('creator-edit-id').value.trim();
+  const payload = {
+    name,
+    channel: $('creator-input-channel').value.trim(),
+    default_layout: $('creator-input-layout').value,
+    default_caption_style: $('creator-input-style').value,
+    game: $('creator-input-game').value.trim(),
+    trigger_words: $('creator-input-triggers').value.trim(),
+    notes: $('creator-input-notes').value.trim()
+  };
+
+  try {
+    let result;
+    if (editId) {
+      result = await api(`/api/creators/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      result = await api('/api/creators', { method: 'POST', body: JSON.stringify(payload) });
+    }
+
+    closeCreatorModal();
+    await loadCreators();
+    if (result && result.id) {
+      openCreatorWorkspace(result.id);
+    }
+  } catch (e) {
+    alert('Failed to save creator: ' + e.message);
+  }
+}
+
+async function deleteCreator(cid) {
+  if (!confirm(`Delete creator workspace "${cid}" and its dedicated videos and clips?`)) return;
+  try {
+    await api(`/api/creators/${cid}`, { method: 'DELETE' });
+    appState.activeCreatorId = null;
+    await loadCreators();
+    switchTab('create');
+  } catch (e) {
+    alert('Delete error: ' + e.message);
+  }
+}
+
+async function openCreatorFolder(cid) {
+  try {
+    await api(`/api/creators/${cid}/open-folder`, { method: 'POST' });
+  } catch (e) {
+    alert('Could not open creator folder: ' + e.message);
+  }
+}
+
+function switchCreatorSubtab(subtab) {
+  document.querySelectorAll('.sub-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.subtab === `creator-${subtab}`);
+  });
+  document.querySelectorAll('#tab-creator .subpane').forEach(p => {
+    p.hidden = (p.id !== `subpane-creator-${subtab}`);
+  });
+}
+
+function setupCreatorEvents() {
+  $('sidebar-add-creator-btn').onclick = () => openCreatorModal();
+  $('quick-add-creator-btn').onclick = () => openCreatorModal();
+  $('creator-modal-close').onclick = closeCreatorModal;
+  $('creator-modal-cancel').onclick = closeCreatorModal;
+  $('creator-modal-save').onclick = saveCreator;
+
+  $('job-creator-select').onchange = onJobCreatorSelectChange;
+
+  $('creator-open-folder-btn').onclick = () => {
+    if (appState.activeCreatorId) openCreatorFolder(appState.activeCreatorId);
+  };
+  $('creator-edit-btn').onclick = () => {
+    const c = appState.creators.find(x => x.id === appState.activeCreatorId);
+    if (c) openCreatorModal(c);
+  };
+  $('creator-delete-btn').onclick = () => {
+    if (appState.activeCreatorId) deleteCreator(appState.activeCreatorId);
+  };
+  $('creator-clip-now-btn').onclick = () => {
+    if (appState.activeCreatorId) {
+      $('job-creator-select').value = appState.activeCreatorId;
+      onJobCreatorSelectChange();
+      switchTab('create');
+    }
+  };
+
+  $('subtab-btn-clips').onclick = () => switchCreatorSubtab('clips');
+  $('subtab-btn-videos').onclick = () => switchCreatorSubtab('videos');
+  $('subtab-btn-logs').onclick = () => switchCreatorSubtab('logs');
 }
 
 window.addEventListener('DOMContentLoaded', init);

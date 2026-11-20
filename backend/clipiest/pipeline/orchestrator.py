@@ -40,6 +40,24 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
     caption_style = body.get("caption_style", "bounce")
     top_h = float(body.get("top", 0.32))
     
+    # Creator workspace integration
+    creator_id = str(body.get("creator_id") or body.get("creator") or "").strip()
+    creator_info = None
+    c_videos_dir = None
+    c_clips_dir = None
+    if creator_id:
+        try:
+            from ..creators import get_creator, get_creator_dirs
+            creator_info = get_creator(creator_id)
+            if creator_info:
+                if not body.get("layout"):
+                    layout = creator_info.get("default_layout") or layout
+                if not body.get("caption_style"):
+                    caption_style = creator_info.get("default_caption_style") or caption_style
+                _, c_videos_dir, c_clips_dir = get_creator_dirs(creator_id)
+        except Exception:
+            pass
+
     # User crop boxes (default to preset or full)
     cam_in = body.get("cam", {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.30})
     game_in = body.get("game", {"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
@@ -84,8 +102,11 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
         is_fast = (duration > FAST_OVER_SEC and mode == "fast" and url)
         
         safe_title = re.sub(r"[^\w\- ]", "_", title).strip()[:40].strip(" _") or "video"
-        vdir = DATA_DIR / f"{safe_title}_{job_id[:8]}"
-        vdir.mkdir(parents=True, exist_ok=True)
+        if creator_info and c_clips_dir:
+            vdir = c_clips_dir
+        else:
+            vdir = DATA_DIR / f"{safe_title}_{job_id[:8]}"
+            vdir.mkdir(parents=True, exist_ok=True)
         
         learned_weights = load_weights(DATA_DIR)
         
@@ -248,6 +269,9 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                 hook=c.get("hook", "")
             )
             
+            clip_rel_file = f"/media/creators/{creator_id}/clips/{clip_id}.mp4" if creator_info else f"{clip_id}.mp4"
+            clip_rel_cover = f"/media/creators/{creator_id}/clips/{clip_id}.jpg" if creator_info else f"{clip_id}.jpg"
+
             clip_record = {
                 "id": clip_id,
                 "title": c.get("title", f"Clip {i+1}"),
@@ -257,10 +281,11 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                 "end": c["end"],
                 "category": c.get("category", "other"),
                 "hashtags": hashtags,
-                "file": f"{clip_id}.mp4",
-                "cover": f"{clip_id}.jpg",
+                "file": clip_rel_file,
+                "cover": clip_rel_cover,
                 "srt": f"{clip_id}.srt",
-                "features": c.get("features", {})
+                "features": c.get("features", {}),
+                "creator": creator_id if creator_info else None
             }
             
             # Save metadata JSON for re-editing
@@ -279,7 +304,8 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                     "title": c.get("title", ""),
                     "words": c["words"],
                     "source_url": url,
-                    "batch_id": job_id
+                    "batch_id": job_id,
+                    "creator": creator_id if creator_info else None
                 },
                 "result": {**res, "status": "done"}
             }, indent=2), encoding="utf-8")
@@ -291,6 +317,13 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                 "stage": f"Rendered {i + 1}/{len(chosen)} clips"
             })
             
+        if creator_info:
+            try:
+                from ..creators import log_creator_event
+                log_creator_event(creator_id, f"Generated {len(rendered_clips)} viral clips from '{title}'", action="clipped")
+            except Exception:
+                pass
+
         save_fn({
             "status": "done",
             "stage": "Clips ready!",
