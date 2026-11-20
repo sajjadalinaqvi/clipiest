@@ -6,6 +6,9 @@ import numpy as np
 import cv2
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+# Run background decoders below normal priority on Windows to prevent UI lag
+BELOW_NORMAL_PRIORITY = 0x00004000 if os.name == "nt" else 0
+SUBPROC_FLAGS = NO_WINDOW | BELOW_NORMAL_PRIORITY
 
 FPS = 3
 W, H = 160, 90
@@ -13,10 +16,10 @@ CUT_THRESH = 38.0
 
 def _chunk_video(source, start, length, report_fn):
     cmd = [
-        "ffmpeg", "-v", "error", "-ss", f"{start}", "-t", f"{length}", "-i", str(source), "-an",
+        "ffmpeg", "-v", "error", "-threads", "1", "-ss", f"{start}", "-t", f"{length}", "-i", str(source), "-an",
         "-vf", f"fps={FPS},scale={W}:{H}", "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"
     ]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=W * H * 64, creationflags=NO_WINDOW)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=W * H * 64, creationflags=SUBPROC_FLAGS)
     flow, cuts, prev = [], [], None
     try:
         while True:
@@ -48,7 +51,8 @@ def _chunk_video(source, start, length, report_fn):
     return f_arr, c_arr
 
 def _optical_flow_parallel(source, duration, report_fn):
-    workers = max(2, min(8, (os.cpu_count() or 4) - 1))
+    # Cap parallel workers to half the CPU cores (max 3) to prevent starving system resources
+    workers = max(1, min(3, (os.cpu_count() or 4) // 2))
     size = max(60, int(np.ceil(duration / workers / 60) * 60))
     starts = list(range(0, int(np.ceil(duration)), size))
     done = [0.0]

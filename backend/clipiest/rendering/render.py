@@ -9,6 +9,8 @@ from .layouts import render_graph, text_positions
 from .captions import write_subtitles
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+BELOW_NORMAL_PRIORITY = 0x00004000 if os.name == "nt" else 0
+SUBPROC_FLAGS = NO_WINDOW | BELOW_NORMAL_PRIORITY
 
 def probe_video(path: Path) -> dict:
     """Probes video dimensions and duration using ffprobe."""
@@ -111,13 +113,15 @@ def render_clip(
             encoders.append(("nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-pix_fmt", "yuv420p"]))
         if HAS_QSV:
             encoders.append(("qsv", ["-c:v", "h264_qsv", "-global_quality", "23", "-preset", "fast", "-pix_fmt", "nv12"]))
-        encoders.append(("libx264", ["-c:v", "libx264", "-crf", "20", "-preset", "fast", "-pix_fmt", "yuv420p"]))
+        # Limit x264 threads to avoid CPU starvation
+        x264_threads = str(max(1, (os.cpu_count() or 4) - 2))
+        encoders.append(("libx264", ["-c:v", "libx264", "-crf", "20", "-preset", "fast", "-pix_fmt", "yuv420p", "-threads", x264_threads]))
 
         err = None
         encoder_used = "libx264"
         for enc_name, enc_args in encoders:
             cmd = base_cmd + enc_args + ["rendered.mp4"]
-            r = subprocess.run(cmd, cwd=str(work), capture_output=True, text=True, creationflags=NO_WINDOW)
+            r = subprocess.run(cmd, cwd=str(work), capture_output=True, text=True, creationflags=SUBPROC_FLAGS)
             if r.returncode == 0:
                 encoder_used = enc_name
                 break

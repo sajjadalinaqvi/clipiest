@@ -7,6 +7,8 @@ import yt_dlp
 from ..config import PAD_SEC
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+BELOW_NORMAL_PRIORITY = 0x00004000 if os.name == "nt" else 0
+SUBPROC_FLAGS = NO_WINDOW | BELOW_NORMAL_PRIORITY
 
 def get_ytdl(extra_opts: dict = None):
     opts = {
@@ -90,10 +92,11 @@ def download_video_section(url: str, out_dir: Path, name: str, start: float, end
                 "-i", stream_url,
                 "-t", f"{dur:.2f}",
                 "-c:v", "libx264", "-c:a", "aac",
+                "-threads", "2",
                 "-movflags", "+faststart",
                 str(out_mp4)
             ]
-            subprocess.run(cmd, timeout=120, check=True, creationflags=NO_WINDOW)
+            subprocess.run(cmd, timeout=120, check=True, creationflags=SUBPROC_FLAGS)
             if out_mp4.exists() and out_mp4.stat().st_size > 5000:
                 return out_mp4
     except Exception as e:
