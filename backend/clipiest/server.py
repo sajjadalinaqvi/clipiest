@@ -12,6 +12,7 @@ import shutil
 import threading
 import subprocess
 import re
+import urllib.request
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -33,7 +34,7 @@ from .rendering.layouts import CATALOG, LAYOUT_IDS, geometry, text_positions, re
 from .rendering.captions import STYLES, write_subtitles
 from .rendering.render import render_clip, probe_video
 from .rendering.reedit import attach_reedit, find_file
-from .vision.previews import extract_storyboard, extract_seek_frame, preview_video_url
+from .vision.previews import extract_storyboard, extract_seek_frame, preview_video_url, extract_youtube_id
 from .vision.facecam import detect_facecam
 from .ai.learn import record_feedback, load_weights
 from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider, fetch_models_with_url
@@ -615,15 +616,60 @@ def api_scout_moments(body: dict):
     yt_words = None
     audio_file = None
     tmp_clean = []
+    is_age_restricted = False
 
     try:
         if url:
-            with get_ytdl({"skip_download": True}) as y:
-                info = y.extract_info(url, download=False)
-            title = info.get("title") or "Video"
-            uploader = info.get("uploader") or info.get("channel") or ""
-            duration = float(info.get("duration") or 0)
-            yt_words = youtube_words_from_info(info)
+            info = None
+            try:
+                with get_ytdl({"skip_download": True}) as y:
+                    info = y.extract_info(url, download=False)
+                title = info.get("title") or "Video"
+                uploader = info.get("uploader") or info.get("channel") or ""
+                duration = float(info.get("duration") or 0)
+                yt_words = youtube_words_from_info(info)
+            except Exception as ytdl_err:
+                err_s = str(ytdl_err).lower()
+                is_age_restricted = any(phrase in err_s for phrase in ["sign in", "confirm your age", "cookies", "inappropriate", "private"])
+                # Age restriction, sign-in required, or unauthenticated stream fallback
+                yt_id = extract_youtube_id(url)
+                cand_folders = [DATA_DIR / source_id, DATA_DIR / f"yt_{yt_id}"] if yt_id else [DATA_DIR / source_id]
+                for cf in cand_folders:
+                    meta_f = cf / "source.json"
+                    if meta_f.exists():
+                        try:
+                            s_data = json.loads(meta_f.read_text(encoding="utf-8"))
+                            title = s_data.get("title") or title
+                            uploader = s_data.get("uploader") or uploader
+                            duration = float(s_data.get("duration") or 0)
+                        except Exception:
+                            pass
+                if not title or title == "Video":
+                    if yt_id:
+                        title = f"YouTube Video ({yt_id})"
+                        try:
+                            req = urllib.request.Request(
+                                f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={yt_id}&format=json",
+                                headers={"User-Agent": "Mozilla/5.0"}
+                            )
+                            with urllib.request.urlopen(req, timeout=5) as r:
+                                o_data = json.loads(r.read().decode("utf-8"))
+                                title = o_data.get("title") or title
+                                uploader = o_data.get("author_name") or uploader
+                        except Exception:
+                            pass
+                if duration <= 0 and yt_id:
+                    try:
+                        wp_req = urllib.request.Request(f"https://www.youtube.com/watch?v={yt_id}", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                        with urllib.request.urlopen(wp_req, timeout=5) as wp_resp:
+                            html_c = wp_resp.read().decode("utf-8", errors="ignore")
+                        m_dur = re.findall(r'lengthSeconds":\s*"(\d+)"', html_c)
+                        if m_dur:
+                            duration = float(m_dur[0])
+                    except Exception:
+                        pass
+                if duration <= 0:
+                    duration = 600.0  # Safe default 10 minutes
         else:
             src = get_source_file(source_id)
             if not src or not src.exists():
@@ -637,26 +683,32 @@ def api_scout_moments(body: dict):
         rms = np.zeros(max(1, int(duration)))
 
         if not yt_words:
-            if url:
-                audio_dir = DATA_DIR / "tmp" / f"scout_{uuid.uuid4().hex[:8]}"
-                audio_dir.mkdir(parents=True, exist_ok=True)
-                with get_ytdl({"format": "ba/b", "outtmpl": str(audio_dir / "audio.%(ext)s")}) as y:
-                    y.download([url])
-                audio_file = next(f for f in audio_dir.glob("audio.*") if f.suffix not in (".part", ".ytdl"))
-                tmp_clean.append(audio_dir)
+            if url and not is_age_restricted:
+                try:
+                    audio_dir = DATA_DIR / "tmp" / f"scout_{uuid.uuid4().hex[:8]}"
+                    audio_dir.mkdir(parents=True, exist_ok=True)
+                    with get_ytdl({"format": "ba/b", "outtmpl": str(audio_dir / "audio.%(ext)s")}) as y:
+                        y.download([url])
+                    cand_audio = [f for f in audio_dir.glob("audio.*") if f.suffix not in (".part", ".ytdl")]
+                    if cand_audio:
+                        audio_file = cand_audio[0]
+                        tmp_clean.append(audio_dir)
+                except Exception:
+                    audio_file = None
 
-            rms, _ = _audio_profile(audio_file)
-            candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False)
-            words = []
-            for c in candidates[:min(6, len(candidates))]:
-                res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
-                for w in res.get("words", []):
-                    words.append({
-                        "start": c["start"] + w["start"],
-                        "end": c["start"] + w["end"],
-                        "text": w["text"]
-                    })
-            yt_words = sorted(words, key=lambda x: x["start"])
+            if audio_file and audio_file.exists():
+                rms, _ = _audio_profile(audio_file)
+                candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False)
+                words = []
+                for c in candidates[:min(6, len(candidates))]:
+                    res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
+                    for w in res.get("words", []):
+                        words.append({
+                            "start": c["start"] + w["start"],
+                            "end": c["start"] + w["end"],
+                            "text": w["text"]
+                        })
+                yt_words = sorted(words, key=lambda x: x["start"])
 
         moments = find_viral_moments_ai(
             words=yt_words or [],

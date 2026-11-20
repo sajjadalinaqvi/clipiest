@@ -161,11 +161,22 @@ def preview_video_url(url: str, creator_id: Optional[str] = None) -> dict:
                     uploader = oembed_data.get("author_name") or uploader
             except Exception:
                 pass
+            dur_val = 0.0
+            try:
+                wp_req = urllib.request.Request(f"https://www.youtube.com/watch?v={yt_id}", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(wp_req, timeout=5) as wp_resp:
+                    html_content = wp_resp.read().decode("utf-8", errors="ignore")
+                m_dur = re.findall(r'lengthSeconds":\s*"(\d+)"', html_content)
+                if m_dur:
+                    dur_val = float(m_dur[0])
+            except Exception:
+                pass
+
             info = {
                 "id": yt_id,
                 "title": title,
                 "uploader": uploader,
-                "duration": 0.0,
+                "duration": dur_val,
                 "thumbnail": f"https://i.ytimg.com/vi/{yt_id}/maxresdefault.jpg"
             }
         else:

@@ -1348,8 +1348,13 @@ async function startMomentScout() {
     }
 
   } catch (e) {
-    if (statusText) statusText.innerHTML = `❌ Analysis Error: ${escapeHtml(e.message)}`;
-    alert('Moment analysis failed: ' + e.message);
+    const cleanMsg = (e.message || '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    if (statusText) statusText.innerHTML = `❌ Analysis Error: ${escapeHtml(cleanMsg)}`;
+    if (cleanMsg.includes('age') || cleanMsg.includes('sign in') || cleanMsg.includes('cookies')) {
+      alert('This YouTube video is age-restricted or requires sign-in.\n\nPlease upload cookies.txt in LLM & Settings > YouTube Cookies to access audio.');
+    } else {
+      alert('Moment analysis failed: ' + cleanMsg);
+    }
   } finally {
     btn.disabled = false;
     btn.innerHTML = origHtml;

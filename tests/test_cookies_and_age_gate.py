@@ -101,5 +101,30 @@ class TestCookiesAndAgeGate(unittest.TestCase):
             self.assertIn("notice", data)
             self.assertEqual(data["title"], "GTA 6 Official Gameplay")
 
+    @patch("clipiest.server.get_ytdl")
+    def test_scout_moments_age_restricted_fallback(self, mock_get_ytdl):
+        # Simulate yt-dlp throwing age-restricted error on scout
+        mock_instance = MagicMock()
+        mock_instance.extract_info.side_effect = Exception(
+            "ERROR: [youtube] aPpZMvPcgAQ: Sign in to confirm your age. This video may be inappropriate for some users. Use --cookies-from-browser or --cookies for the authentication."
+        )
+        mock_get_ytdl.return_value.__enter__.return_value = mock_instance
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.read.return_value = b'{"title": "GTA 6 Official Gameplay", "author_name": "RockstarGames"}'
+            mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+            resp = client.post("/api/moments/scout", json={
+                "url": "https://www.youtube.com/watch?v=aPpZMvPcgAQ",
+                "count": 3,
+                "min_len": 30,
+                "max_len": 60
+            })
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertTrue(data.get("success"))
+            self.assertGreaterEqual(len(data.get("moments", [])), 1)
+
 if __name__ == "__main__":
     unittest.main()

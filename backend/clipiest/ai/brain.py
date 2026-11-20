@@ -230,7 +230,60 @@ def find_viral_moments_ai(
     lines = make_transcript_lines(words, z) if words else []
     
     if not lines:
-        log("No speech transcript available, using loudness energy fallback.")
+        log("No speech transcript available. Prompting LLM for narrative moments from video title & game...")
+        narrative_prompt = f"""You are a viral YouTube Shorts / TikTok editor.
+Analyze this video:
+Title: "{_clean_text(title, 100) or 'Video'}"
+Channel/Creator: "{_clean_text(uploader, 50) or 'Creator'}"
+Game/Topic: "{game_name or 'Gaming/Entertainment'}"
+Duration: {int(duration)} seconds.
+
+Recommend {max_clips} viral clip moments across the video duration (each between {int(min_len)}s and {int(max_len)}s).
+For each moment, give a high-converting uppercase hook (max 4-5 words), clip title, category (action/funny/clutch/reaction/fail), and viral reason.
+
+Format strictly as a JSON array of objects:
+[
+  {{
+    "start": float,
+    "end": float,
+    "score": 85,
+    "category": "action",
+    "hook": "WAIT FOR THIS",
+    "title": "Clip Title",
+    "description": "Short explanation",
+    "reason": "Why it's viral"
+  }}
+]"""
+        try:
+            raw_res = ask_llm(narrative_prompt)
+            if isinstance(raw_res, dict) and "items" in raw_res:
+                raw_res = raw_res["items"]
+            if isinstance(raw_res, list) and raw_res:
+                narrative_moments = []
+                for c in raw_res:
+                    if not isinstance(c, dict):
+                        continue
+                    st = max(0.0, min(duration - 5, float(c.get("start", 0))))
+                    en = min(duration, max(st + 10, float(c.get("end", st + 45))))
+                    cat = str(c.get("category", "action")).lower()
+                    narrative_moments.append({
+                        "start": round(st, 2),
+                        "end": round(en, 2),
+                        "score": max(50, min(100, int(c.get("score", 85)))),
+                        "category": cat if cat in CATEGORIES else "action",
+                        "hook": to_roman(str(c.get("hook", "WAIT FOR IT"))[:50]).upper(),
+                        "title": to_roman(str(c.get("title", title[:40] or "Viral Moment"))[:70]),
+                        "description": to_roman(str(c.get("description", ""))[:300]),
+                        "hashtags": [re.sub(r"\W", "", str(h))[:25] for h in c.get("hashtags", []) if h][:6],
+                        "highlight_words": [],
+                        "reason": str(c.get("reason", "Narrative viral moment"))[:200]
+                    })
+                if narrative_moments:
+                    return narrative_moments[:max_clips]
+        except Exception as e:
+            log(f"LLM narrative scouting failed: {e}")
+
+        log("Using loudness/excitation energy fallback.")
         return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration)
 
     windows = []

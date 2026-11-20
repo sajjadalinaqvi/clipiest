@@ -170,17 +170,6 @@ def ask_llm(prompt: str, schema: dict = None, model: str = None) -> dict | list:
         except Exception as e:
             last_err = e
             continue
-            
-    # Direct LM Studio & Ollama fallback attempts before giving up
-    if provider in ("lmstudio", "custom", "ollama"):
-        for fallback_base in LOCAL_FALLBACK_URLS:
-            if fallback_base == base_url:
-                continue
-            try:
-                return _call_openai_compat(fallback_base, models[0] if models else "qwen/qwen3.5-9b", "lm-studio", prompt)
-            except Exception as e:
-                last_err = e
-                pass
 
     raise RuntimeError(f"All AI providers failed: {explain_ai_error(last_err or Exception('connection failed'), provider)}")
 
@@ -224,7 +213,7 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
     last_ex = None
     for target in urls_to_attempt:
         try:
-            with httpx.Client(timeout=120.0) as client:
+            with httpx.Client(timeout=httpx.Timeout(60.0, connect=1.0)) as client:
                 r = client.post(f"{target}/chat/completions", headers=headers, json=payload)
                 r.raise_for_status()
                 data = r.json()
