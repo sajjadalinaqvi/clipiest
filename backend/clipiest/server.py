@@ -282,8 +282,8 @@ async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Fo
 def clean_error_message(err: Exception) -> str:
     """Strips terminal ANSI color sequences and translates known errors into actionable user advice."""
     msg = str(err)
-    msg = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', msg)
-    if any(p in msg.lower() for p in ["sign in to confirm your age", "confirm your age", "use --cookies", "inappropriate for some users"]):
+    msg = re.sub(r'(?:\x1b|\033|%)\[[0-9;]*[a-zA-Z]', '', msg)
+    if any(p in msg.lower() for p in ["sign in to confirm your age", "confirm your age", "use --cookies", "inappropriate for some users", "cookies for the authentication"]):
         return "This video is age-restricted or requires YouTube sign-in. Please upload a cookies.txt file in LLM & Settings > YouTube Cookies to access this video."
     return msg
 

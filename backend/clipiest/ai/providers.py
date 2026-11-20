@@ -34,7 +34,7 @@ def list_supported_providers() -> list[str]:
 def explain_ai_error(e: Exception, provider: str = "AI") -> str:
     """Explains AI errors in clear actionable terms."""
     msg = str(e).lower()
-    if "refused" in msg or "10061" in msg or "connecterror" in msg:
+    if isinstance(e, (httpx.ConnectTimeout, httpx.ConnectError)) or any(term in msg for term in ("refused", "10061", "connecterror", "connecttimeout", "failed to establish")):
         return f"Could not connect to {provider.upper()}. Ensure LM Studio or Ollama is running and Local Server is started."
     if "401" in msg or "403" in msg or "key" in msg:
         return f"Authentication failed for {provider.upper()}. Check your API key under Settings -> AI."
@@ -42,8 +42,8 @@ def explain_ai_error(e: Exception, provider: str = "AI") -> str:
         return f"The model requested does not exist on {provider.upper()}. Click 'Fetch Models' in Settings to select a loaded model."
     if "429" in msg or "quota" in msg or "rate limit" in msg:
         return f"{provider.upper()} rate limit or quota exceeded. Please check your provider account."
-    if "timed out" in msg or "readtimeout" in msg:
-        return f"{provider.upper()} took too long to reply (>120s). The model may still be loading into VRAM."
+    if isinstance(e, httpx.ReadTimeout) or "readtimeout" in msg:
+        return f"{provider.upper()} took too long to generate response (>120s). The model may still be generating or loading into VRAM."
     return str(e)
 
 def _clean_json_text(raw: str) -> str:
@@ -155,6 +155,21 @@ def ask_llm(prompt: str, schema: dict = None, model: str = None, max_tokens: int
     if not key and provider in ("lmstudio", "custom", "ollama"):
         key = "lm-studio"
     base_url = (ai_cfg.get("base_url") or AI_BASE_URL or PROVIDERS.get(provider, "http://localhost:1235/v1")).rstrip("/")
+
+    # Auto-resolve working endpoint and loaded model for local providers
+    if provider in ("lmstudio", "custom", "ollama"):
+        try:
+            avail_models, working_url = fetch_models_with_url(provider, base_url, key)
+            if working_url:
+                base_url = working_url
+            chat_models = [m for m in avail_models if "embed" not in m.lower()]
+            if chat_models:
+                cfg_model = model or ai_cfg.get("model")
+                if not cfg_model or cfg_model not in chat_models:
+                    model = chat_models[0]
+        except Exception:
+            pass
+
     models = [model] if model else ([ai_cfg.get("model")] if ai_cfg.get("model") else AI_MODELS)
 
     last_err = None
@@ -221,7 +236,20 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
     for target in urls_to_attempt:
         try:
             with httpx.Client(timeout=httpx.Timeout(60.0, connect=1.0)) as client:
-                r = client.post(f"{target}/chat/completions", headers=headers, json=payload)
+                target_model = payload["model"]
+                # Auto-align target model if local provider has loaded models
+                if allow_fallback and any(h in target for h in ("localhost", "127.0.0.1")):
+                    try:
+                        m_resp = client.get(f"{target}/models", timeout=httpx.Timeout(2.0, connect=0.8))
+                        if m_resp.status_code == 200:
+                            avail = [item["id"] for item in m_resp.json().get("data", []) if "id" in item and "embed" not in item["id"].lower()]
+                            if avail and target_model not in avail:
+                                target_model = avail[0]
+                    except Exception:
+                        pass
+
+                req_payload = {**payload, "model": target_model}
+                r = client.post(f"{target}/chat/completions", headers=headers, json=req_payload)
                 r.raise_for_status()
                 data = r.json()
                 msg = data["choices"][0]["message"]
@@ -230,10 +258,13 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
                     raw = msg.get("reasoning_content", "").strip()
                 cleaned = _clean_json_text(raw)
                 return json.loads(cleaned)
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.NetworkError, httpx.RemoteProtocolError) as e:
+            last_ex = e
+            continue
         except Exception as e:
             last_ex = e
-            # Only failover to another local URL if it was a connection/refusal error
-            if "connect" in str(e).lower() or "refused" in str(e).lower():
+            err_lower = str(e).lower()
+            if any(term in err_lower for term in ("connect", "refused", "timed out", "timeout", "10061", "reset", "failed to establish")):
                 continue
             raise e
             

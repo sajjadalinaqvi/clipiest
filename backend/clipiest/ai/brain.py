@@ -201,12 +201,15 @@ def snap_clip_to_sentences(clip: dict, words: list, min_len: float, max_len: flo
     dur = clip["end"] - clip["start"]
     words[:] = [w for w in words if w["start"] < dur]
 
-def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float, max_len: float, duration: float) -> list:
+def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float, max_len: float, duration: float, title: str = "") -> list:
     """Heuristic fallback: picks loudest stretches with verified speech when AI is unavailable."""
     z = loud_zscore(db) if len(db) else np.zeros(int(duration))
     order = np.argsort(-z)
     picks = []
     clip_len = min(duration, max_len)
+    base_t = (title or "Viral Highlight").split("(")[0].strip()[:35]
+    hooks = ["WAIT FOR THIS", "YOU WON'T BELIEVE THIS", "WATCH TILL THE END", "INSTANT REGRET", "HE DID NOT SEE THIS COMING", "ABSOLUTELY UNREAL"]
+    cats = ["hype", "shock", "clutch", "funny", "action", "rage"]
     
     for sec in order:
         s = max(0.0, float(sec) - clip_len * 0.4)
@@ -215,14 +218,15 @@ def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float
             continue
         if words and not any(s <= w["start"] <= e for w in words):
             continue
+        idx = len(picks)
         picks.append({
             "start": round(s, 2),
             "end": round(e, 2),
-            "score": 65,
-            "category": "hype",
-            "hook": "WAIT FOR THIS",
-            "title": "Stream Climax Moment",
-            "description": "High excitement peak detected in audio stream.",
+            "score": max(70, min(92, 85 - idx * 3)),
+            "category": cats[idx % len(cats)],
+            "hook": hooks[idx % len(hooks)],
+            "title": f"{base_t} - Peak #{idx + 1}",
+            "description": f"High excitement peak detected at {int(s // 60)}m {int(s % 60)}s in audio stream.",
             "hashtags": ["viral", "gaming", "stream", "highlight"],
             "highlight_words": [],
             "reason": "Highest audio amplitude and action energy."
@@ -234,14 +238,14 @@ def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float
         picks.append({
             "start": 0.0,
             "end": round(min(duration, clip_len), 2),
-            "score": 50,
-            "category": "other",
+            "score": 75,
+            "category": "action",
             "hook": "WATCH THIS",
-            "title": "Stream Highlight",
-            "description": "Stream action slice.",
+            "title": f"{base_t} - Viral Moment",
+            "description": "Featured stream action slice.",
             "hashtags": ["gaming", "shorts"],
             "highlight_words": [],
-            "reason": "Default segment"
+            "reason": "Top action segment"
         })
     return picks
 
@@ -347,6 +351,16 @@ Format strictly as a JSON array of objects:
             "chunk": chunk
         })
 
+    # If transcript lines exist but are sparse across windows, bundle them so LLM is never skipped
+    if not window_candidates and lines:
+        window_candidates.append({
+            "idx": 0,
+            "a": lines[0]["s"],
+            "b": lines[-1]["e"],
+            "score": 10.0,
+            "chunk": lines
+        })
+
     # Sort candidates by excitement; query at most the top 2 windows (or 1 if video is short/count is low)
     window_candidates.sort(key=lambda x: -x["score"])
     target_window_count = 1 if max_clips <= 4 and len(window_candidates) > 0 else min(2, len(window_candidates))
@@ -427,23 +441,50 @@ Format strictly as a JSON array of objects:
         if len(chosen) >= max_clips:
             break
 
-    # If AI produced fewer clips than requested, backfill with loudness picks
+    # If AI produced fewer clips than requested, backfill and enrich with LLM
     if len(chosen) < max_clips:
         extra_needed = max_clips - len(chosen)
         log(f"Backfilling {extra_needed} candidate(s) using loudness and excitation...")
-        loud_picks = fallback_by_loudness(db, words, extra_needed * 2, min_len, max_len, duration)
-        for lp in loud_picks:
-            if not _overlaps(lp["start"], lp["end"], chosen):
-                chunk_words = [dict(w) for w in words if lp["start"] - 1.0 <= w["start"] <= lp["end"] + 1.0]
-                if chunk_words:
-                    for w in chunk_words:
-                        w["start"] = max(0.0, w["start"] - lp["start"])
-                        w["end"] = max(0.0, w["end"] - lp["start"])
-                    snap_clip_to_sentences(lp, chunk_words, min_len, max_len, duration)
-                    lp["words"] = chunk_words
-                chosen.append(lp)
-                if len(chosen) >= max_clips:
-                    break
+        loud_picks = fallback_by_loudness(db, words, extra_needed * 2, min_len, max_len, duration, title=title)
+        unpicked = [lp for lp in loud_picks if not _overlaps(lp["start"], lp["end"], chosen)][:extra_needed]
+        
+        # Try to enrich backfill moments with unique LLM titles & hooks
+        if unpicked:
+            try:
+                enrich_prompt = f"""You are a master viral video editor.
+Video Title: "{_clean_text(title, 80)}" ({uploader or 'Creator'})
+Game/Topic: "{game_name or 'General'}"
+For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 words), engaging title (<60 chars), category (funny, clutch, fail, shock, hype, story), and viral score (80-98):
+"""
+                for idx, up in enumerate(unpicked, 1):
+                    enrich_prompt += f"\nMoment #{idx}: {up['start']:.1f}s - {up['end']:.1f}s"
+                enrich_prompt += """\n\nReply strictly with a JSON array:
+[{"index": 1, "hook": "HE DID NOT EXPECT THIS", "title": "Insane Climax Moment", "category": "hype", "score": 90, "reason": "High retention spike"}]"""
+                enriched = ask_llm(enrich_prompt, max_tokens=512, temperature=0.7)
+                if isinstance(enriched, list):
+                    e_map = {item.get("index", i + 1): item for i, item in enumerate(enriched) if isinstance(item, dict)}
+                    for idx, up in enumerate(unpicked, 1):
+                        info_e = e_map.get(idx)
+                        if info_e:
+                            up["hook"] = to_roman(str(info_e.get("hook", up["hook"]))[:50]).upper()
+                            up["title"] = to_roman(str(info_e.get("title", up["title"]))[:70])
+                            up["score"] = max(75, min(99, int(info_e.get("score", up["score"]))))
+                            up["category"] = str(info_e.get("category", up["category"])).lower()
+                            up["reason"] = str(info_e.get("reason", up["reason"]))[:200]
+            except Exception as e:
+                log(f"Enriching backfill moments with LLM skipped: {e}")
+
+        for lp in unpicked:
+            chunk_words = [dict(w) for w in words if lp["start"] - 1.0 <= w["start"] <= lp["end"] + 1.0]
+            if chunk_words:
+                for w in chunk_words:
+                    w["start"] = max(0.0, w["start"] - lp["start"])
+                    w["end"] = max(0.0, w["end"] - lp["start"])
+                snap_clip_to_sentences(lp, chunk_words, min_len, max_len, duration)
+                lp["words"] = chunk_words
+            chosen.append(lp)
+            if len(chosen) >= max_clips:
+                break
 
     return chosen[:max_clips]
 

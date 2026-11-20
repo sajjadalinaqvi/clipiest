@@ -700,10 +700,10 @@ function setupControls() {
       };
 
     } catch (e) {
-      const cleanMsg = (e.message || '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+      const cleanMsg = (e.message || '').replace(/(?:\x1b|\033|%)\[[0-9;]*[a-zA-Z]/g, '');
       statusEl.className = 'status-message active-error';
       statusEl.innerHTML = `❌ Error fetching preview: ${escapeHtml(cleanMsg)}`;
-      if (cleanMsg.includes('age-restricted') || cleanMsg.includes('confirm your age') || cleanMsg.includes('sign in')) {
+      if (cleanMsg.includes('age-restricted') || cleanMsg.includes('confirm your age') || cleanMsg.includes('sign in') || cleanMsg.includes('cookies')) {
         alert('This video is age-restricted or requires YouTube sign-in.\n\nPlease upload cookies.txt in LLM & Settings > YouTube Cookies to access this video.');
       } else {
         alert('Could not fetch preview: ' + cleanMsg);
