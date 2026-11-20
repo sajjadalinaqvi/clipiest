@@ -638,6 +638,7 @@ def api_scout_moments(body: dict):
     count = max(1, min(12, int(body.get("count", 4))))
     min_len = max(5, min(180, float(body.get("min_len", 30))))
     max_len = max(min_len, min(180, float(body.get("max_len", 60))))
+    instructions = str(body.get("instructions") or body.get("user_instructions") or body.get("prompt") or "").strip()
 
     title, uploader, duration = "", "", 0.0
     yt_words = None
@@ -746,7 +747,8 @@ def api_scout_moments(body: dict):
             max_clips=count,
             min_len=min_len,
             max_len=max_len,
-            game_name=game_name
+            game_name=game_name,
+            user_instructions=instructions
         )
 
         for p in tmp_clean:
@@ -757,6 +759,7 @@ def api_scout_moments(body: dict):
             "title": title,
             "duration": duration,
             "count": len(moments),
+            "instructions": instructions,
             "moments": moments
         }
     except Exception as e:

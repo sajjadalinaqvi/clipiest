@@ -19,28 +19,33 @@ Your mission is to scout the stream transcript and audio energy spikes below to 
 Video Title: "{title}"
 Creator/Channel: "{uploader}"
 {game_rule}
+{user_directive}
 
-SHORT-FORM VIRAL RETENTION FORMULA:
-1. THE 2-SECOND HOOK: The clip MUST start with an immediate curiosity gap, bold statement, high stakes, funny blunder, or sudden chaotic action. Never start on dead air or greetings.
-2. NARRATIVE MOMENTUM (Setup -> Escalation -> Climax -> Reaction):
-   - Setup (first 3-8s): Hook the viewer so they stop scrolling.
-   - Escalation (8-25s): The struggle, funny confusion, or impending chaos builds.
-   - Climax & Payoff (last 5-15s): The kill, disaster, clutch, punchline, or unbelievable twist.
-3. AUDIO ENERGY & (LOUD) SPIKES: Give heavy priority to timestamps labeled (LOUD)—these mark genuine screams, explosive reactions, hysterical laughter, and clutch gameplay.
-4. STANDALONE ENTERTAINMENT: Must be completely understood and hilarious/exciting for a stranger scrolling their feed with zero prior context.
+CONTENT-CREATOR-FIRST VIRAL FORMULA:
+Clipiest is an all-rounder viral clipping platform across gaming streams, podcasts, lifestyle vlogging, normal hangout streamings, and partying.
+1. IT IS ALWAYS ABOUT THE CREATOR: Viewers scroll to watch the HUMAN CONTENT CREATOR, their personality, and their emotional reactions—NOT generic background gameplay or product mechanics.
+2. CREATOR HIGHLIGHTS TO CAPTURE:
+   - Hilarious unhinged reactions, screaming in panic, jumping out of their chair, laughing hysterically.
+   - Spicy banter, roasts, arguing with stream chat or callers, reacting to donations or tweets.
+   - Storytime, wild personal confessions, hot takes, dating disasters, or relatable life rants.
+   - Interpersonal chaos: drama, awkward silences, hype celebrations with friends, physical comedy.
+   - Extreme emotions: betrayal, disbelief, clutch relief, hysterical breakdown.
+3. THE GAME/PRODUCT IS JUST A PROP: Never clip generic gameplay (driving down a road, normal kills, leveling up) unless it triggers an explosive CREATOR REACTION.
+4. EXCEPTION (PROMOTIONAL / TRAILERS): ONLY if there is NO human creator in the video (e.g. an official game trailer, tech launch, promo compilation), then focus on the product reveals and climactic action.
+5. STANDALONE RETENTION: The clip must hook a scrolling stranger within 2 seconds with an immediate curiosity gap and deliver a satisfying punchline or reaction.
 """
 
 RULES = """
 Requirements:
-- Recommend up to {n} distinct viral clips.
+- Recommend up to {n} distinct viral clips focusing primarily on the creator's best moments.
 - Each clip must be between {min_len}s and {max_len}s long. Use exact seconds from the transcript brackets [seconds].
 - "start": Timestamp of the setup line (start of speech, not dead air).
 - "end": Timestamp right after the punchline or reaction (end of sentence).
-- "hook": 3-5 uppercase words that grab immediate attention on screen (e.g. "BRO REGRETTED THIS IMMEDIATELY", "HE THOUGHT HE WAS SAFE", "LUCKIEST SHOT OF ALL TIME", "HIS REACTION IS UNREAL", "WAIT FOR THE KARMA").
-- "title": Punchy, viral title under 70 characters.
+- "hook": 3-5 uppercase words focused on the creator (e.g. "HE LOST HIS MIND", "BRO THOUGHT HE WAS SAFE", "HIS REACTION IS UNREAL", "HE ACTUALLY SAID THIS", "BRO WAS FIGHTING FOR HIS LIFE", "THE EXACT SECOND HE REGRETTED IT").
+- "title": Punchy, viral title under 70 characters emphasizing the creator's action/reaction.
 - "score": 80-99 viral retention rating based on comedy, hype, or shock factor.
 - "category": one of funny, fail, clutch, rage, shock, story, hype.
-- "reason": Why a stranger on TikTok/Shorts will watch this clip to the very end.
+- "reason": Why the creator's moment will make strangers watch to the very end.
 
 Strictly format response as JSON array of objects:
 [
@@ -48,13 +53,13 @@ Strictly format response as JSON array of objects:
     "start": float,
     "end": float,
     "score": 95,
-    "hook": "HE THOUGHT HE WAS SAFE",
-    "title": "Insane Police Chase Escape",
-    "description": "Streamer somehow dodges a 5-star wanted level in the final seconds.",
-    "category": "clutch",
-    "hashtags": ["gaming", "gta", "clutch", "viral", "escape"],
-    "highlight_words": ["cops", "run", "omg", "escaped"],
-    "reason": "Intense build-up followed by an unbelievable getaway payoff with loud celebration."
+    "hook": "HE LOST HIS MIND",
+    "title": "Streamer Loses His Mind After Shocking Twist",
+    "description": "Creator explodes with hysterical laughter after an unbelievable turn of events.",
+    "category": "funny",
+    "hashtags": ["viral", "streamer", "funny", "reactions"],
+    "highlight_words": ["omg", "screaming", "no way"],
+    "reason": "Immediate high-energy scream from the creator hooks viewers instantly into the chaos."
   }}
 ]
 
@@ -259,13 +264,20 @@ def find_viral_moments_ai(
     min_len: float = 25.0,
     max_len: float = 60.0,
     game_name: str = None,
+    user_instructions: str = "",
     log=print
 ) -> list:
-    """Full PeakCut-grade viral moment discovery engine.
+    """Full PeakCut-grade viral moment discovery engine with Creator-First priority.
     Slices long streams into 15-minute sliding windows with loudness marks and invokes LLM
-    to scout, score, and isolate standalone viral clips."""
+    to scout, score, and isolate standalone viral clips centered on the content creator."""
     z = loud_zscore(db) if len(db) else np.zeros(int(duration))
     lines = make_transcript_lines(words, z) if words else []
+
+    user_directive = f"""
+🎯 USER DIRECTIVE (HIGHEST PRIORITY):
+"{user_instructions}"
+You MUST heavily prioritize moments matching this directive!
+""" if user_instructions else ""
     
     if not lines:
         log("No speech transcript available. Prompting LLM for narrative moments from video title & game...")
@@ -275,11 +287,17 @@ Video Title: "{_clean_text(title, 100) or 'Video'}"
 Channel/Creator: "{_clean_text(uploader, 50) or 'Creator'}"
 Game/Topic: "{game_name or 'Gaming/Entertainment'}"
 Total Duration: {int(duration)} seconds.
+{user_directive}
+
+CONTENT-CREATOR-FIRST VIRAL PRINCIPLE:
+- It is ALWAYS about the HUMAN CONTENT CREATOR, not the background gameplay or product.
+- If a content creator/host is present, focus on their funniest reactions, screaming in panic, unhinged laughter, chat roasts, confessions, and storytelling. The game or setting is just the backdrop.
+- Only if there is NO content creator (e.g. an official game trailer or tech launch), focus on the product reveals and climactic action.
 
 Identify {max_clips} distinct viral moments distributed across the video:
 - Space clips across different phases (e.g. early curiosity hook at 10-20%, midpoint tension at 40-55%, peak climax at 70-85%, shocking finale at 90-95%).
 - Each clip MUST be {int(min_len)} to {int(max_len)} seconds long (e.g. start: 120.0, end: 165.0).
-- Provide high-curiosity viral hooks (ALL CAPS, 3-5 words) tailored specifically to the title "{_clean_text(title, 60)}".
+- Provide high-curiosity viral hooks (ALL CAPS, 3-5 words) centered on the creator (e.g. "HE BROKE HIS SETUP", "BRO WAS NOT READY", "HIS REACTION IS UNREAL", "HE ACTUALLY LOST IT").
 - Assign realistic start and end timestamps within 0.0 to {duration:.1f} seconds.
 
 Format strictly as a JSON array of objects:
@@ -287,12 +305,12 @@ Format strictly as a JSON array of objects:
   {{
     "start": float,
     "end": float,
-    "score": 92,
-    "category": "action",
-    "hook": "HE DID NOT EXPECT THIS",
-    "title": "Epic Gameplay Climax",
-    "description": "High-stakes confrontation with a dramatic outcome.",
-    "reason": "Instant visual hook with an explosive payoff."
+    "score": 95,
+    "category": "funny",
+    "hook": "HE LOST HIS MIND",
+    "title": "Creator Goes Completely Unhinged",
+    "description": "Explosive comedic reaction after a shocking moment.",
+    "reason": "Immediate high-energy scream from the creator hooks viewers instantly into the chaos."
   }}
 ]"""
         try:
@@ -325,7 +343,7 @@ Format strictly as a JSON array of objects:
             log(f"LLM narrative scouting failed: {e}")
 
         log("Using loudness/excitation energy fallback.")
-        return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration)
+        return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration, title=title)
 
     windows = []
     t = 0.0
@@ -366,7 +384,7 @@ Format strictly as a JSON array of objects:
     target_window_count = 1 if max_clips <= 4 and len(window_candidates) > 0 else min(2, len(window_candidates))
     selected_windows = sorted(window_candidates[:target_window_count], key=lambda x: x["a"])
 
-    game_rule = f"This stream is {game_name}. Focus on plays, clutching, fails, or hilarious reactions." if game_name else ""
+    game_rule = f"This stream context is {game_name}. Focus primarily on the content creator's reactions, fails, roasts, or clutches." if game_name else ""
     found_moments = []
     ai_success = False
 
@@ -375,7 +393,13 @@ Format strictly as a JSON array of objects:
         # Intelligently cluster around climaxes, screams, and reaction lines (up to 2,500 characters for fast LLM inference)
         fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=2500)
         prompt = (
-            HEAD.format(title=_clean_text(title, 80) or "Video", uploader=_clean_text(uploader, 50) or "Channel", n=max_clips, game_rule=game_rule)
+            HEAD.format(
+                title=_clean_text(title, 80) or "Video",
+                uploader=_clean_text(uploader, 50) or "Channel",
+                n=max_clips,
+                game_rule=game_rule,
+                user_directive=user_directive
+            )
             + RULES.format(n=max_clips, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
         )
         
@@ -448,18 +472,20 @@ Format strictly as a JSON array of objects:
         loud_picks = fallback_by_loudness(db, words, extra_needed * 2, min_len, max_len, duration, title=title)
         unpicked = [lp for lp in loud_picks if not _overlaps(lp["start"], lp["end"], chosen)][:extra_needed]
         
-        # Try to enrich backfill moments with unique LLM titles & hooks
+        # Try to enrich backfill moments with unique creator-focused LLM titles & hooks
         if unpicked:
             try:
-                enrich_prompt = f"""You are a master viral video editor.
+                enrich_prompt = f"""You are a master viral video editor for short-form clips (TikTok, Shorts, Reels).
 Video Title: "{_clean_text(title, 80)}" ({uploader or 'Creator'})
-Game/Topic: "{game_name or 'General'}"
+Context/Topic: "{game_name or 'General'}"
+{user_directive}
+CONTENT-CREATOR-FIRST: Focus on the content creator's hilarious reactions, panic screaming, laughing, chat beef, or crazy confessions. The game or setting is just the backdrop.
 For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 words), engaging title (<60 chars), category (funny, clutch, fail, shock, hype, story), and viral score (80-98):
 """
                 for idx, up in enumerate(unpicked, 1):
                     enrich_prompt += f"\nMoment #{idx}: {up['start']:.1f}s - {up['end']:.1f}s"
                 enrich_prompt += """\n\nReply strictly with a JSON array:
-[{"index": 1, "hook": "HE DID NOT EXPECT THIS", "title": "Insane Climax Moment", "category": "hype", "score": 90, "reason": "High retention spike"}]"""
+[{"index": 1, "hook": "HE LOST HIS MIND", "title": "Creator Goes Completely Unhinged", "category": "funny", "score": 95, "reason": "High-energy reaction hooks viewer"}]"""
                 enriched = ask_llm(enrich_prompt, max_tokens=512, temperature=0.7)
                 if isinstance(enriched, list):
                     e_map = {item.get("index", i + 1): item for i, item in enumerate(enriched) if isinstance(item, dict)}

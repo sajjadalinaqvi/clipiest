@@ -195,6 +195,28 @@
             </div>
           </div>
 
+          <!-- Custom Instructions for LLM -->
+          <div class="scout-instructions-box" id="scout-instructions-box">
+            <div class="scout-instructions-header">
+              <label for="scout-instructions-input" class="scout-lbl">
+                <span>💬 Custom AI Instructions for LLM (Optional):</span>
+              </label>
+              <span class="scout-instructions-hint">Focus on creator reactions, chat beef, wild stories, roasts, etc.</span>
+            </div>
+            <div class="scout-input-row">
+              <input type="text" id="scout-instructions-input" class="input scout-instructions-input" placeholder="e.g. Focus on creator's funniest reactions, shouting, arguing with chat, emotional confessions, or shocking moments...">
+              <button type="button" class="btn-ghost btn-sm" id="scout-instructions-clear-btn" title="Clear instructions">✕</button>
+            </div>
+            <div class="scout-instruction-tags">
+              <span class="scout-tags-lbl">Quick Presets:</span>
+              <button type="button" class="tag-chip" data-inst="Focus on the content creator's funniest facial expressions, laughs, and chaotic scream reactions">😂 Creator Screams &amp; Reactions</button>
+              <button type="button" class="tag-chip" data-inst="Extract when the creator is arguing with chat, roasting viewers, or debating">🗣️ Chat Beef &amp; Roasts</button>
+              <button type="button" class="tag-chip" data-inst="Focus on relatable storytime, crazy personal confessions, or hot takes">📖 Storytime &amp; Confessions</button>
+              <button type="button" class="tag-chip" data-inst="Find the most shocking plot twists, jump scares, and panic moments of the creator">😱 Panic &amp; Jump Scares</button>
+              <button type="button" class="tag-chip" data-inst="Highlight funny banter with friends, awkward silences, and hilarious fails">🔥 Banter &amp; Chaos</button>
+            </div>
+          </div>
+
           <div id="scout-progress-wrap" class="scout-progress-wrap" hidden>
             <div class="scout-progress-header">
               <span id="scout-status-text" class="scout-status-text"><span class="spin">⟳</span> Analyzing audio

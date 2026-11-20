@@ -1293,6 +1293,31 @@ function setupStudioWorkflow() {
   if ($('start-scout-btn')) $('start-scout-btn').onclick = startMomentScout;
   if ($('scout-configure-llm-btn')) $('scout-configure-llm-btn').onclick = openConfigModal;
 
+  // Custom AI Instructions & Quick Presets
+  const instInput = $('scout-instructions-input');
+  const clearInstBtn = $('scout-instructions-clear-btn');
+  if (clearInstBtn && instInput) {
+    clearInstBtn.onclick = () => {
+      instInput.value = '';
+      document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('active'));
+    };
+  }
+  document.querySelectorAll('.tag-chip').forEach(chip => {
+    chip.onclick = () => {
+      const text = chip.getAttribute('data-inst');
+      if (instInput) {
+        if (instInput.value === text) {
+          instInput.value = '';
+          chip.classList.remove('active');
+        } else {
+          instInput.value = text;
+          document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+        }
+      }
+    };
+  });
+
   // Step 3: Studio & Slice controls
   if ($('refresh-frame-btn')) {
     $('refresh-frame-btn').onclick = () => {
@@ -1341,12 +1366,14 @@ async function startMomentScout() {
 
   appState.scoutingInProgress = true;
   try {
+    const userInstructions = $('scout-instructions-input')?.value.trim();
     const payload = {
       url: url || undefined,
       id: id || undefined,
       count: Number($('clip-count')?.value || 4),
       min_len: Number($('min-len')?.value || 30),
-      max_len: Number($('max-len')?.value || 60)
+      max_len: Number($('max-len')?.value || 60),
+      instructions: userInstructions || undefined
     };
 
     if (progressBar) progressBar.style.width = '65%';
@@ -1361,8 +1388,9 @@ async function startMomentScout() {
 
     appState.moments = res.moments;
     if (progressBar) progressBar.style.width = '100%';
+    const instNotice = userInstructions ? ` (Filtered for: "<em>${escapeHtml(userInstructions.slice(0, 35))}...</em>")` : '';
     if (statusText) {
-      statusText.innerHTML = `✅ <strong>LLM Analysis Complete!</strong> Recommended <strong>${res.moments.length} viral moment timestamps</strong>. Select any card below to frame.`;
+      statusText.innerHTML = `✅ <strong>LLM Analysis Complete!</strong> Recommended <strong>${res.moments.length} viral moment timestamps</strong>${instNotice}. Select any card below to frame.`;
     }
 
     renderMomentsList(res.moments);

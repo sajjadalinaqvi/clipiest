@@ -92,5 +92,40 @@ class TestMomentScoutOptimization(unittest.TestCase):
             self.assertIn("Dialogue: 2,0:00:00.00,0:00:45.00,Hook", content)
             self.assertIn(r"\fad(150,0)", content)
 
+    def test_creator_first_prompt_and_user_instructions(self):
+        """Verifies that user instructions and creator-first formula are injected into LLM prompt."""
+        captured_prompts = []
+        def fake_ask_llm(prompt, *args, **kwargs):
+            captured_prompts.append(prompt)
+            return [{
+                "start": 10.0,
+                "end": 40.0,
+                "score": 96,
+                "hook": "HE ROASTED HIS CHAT",
+                "title": "Creator Destroys Chat In Argument",
+                "category": "funny",
+                "reason": "Hilarious unhinged reaction to a donation"
+            }]
+
+        with patch("clipiest.ai.brain.ask_llm", side_effect=fake_ask_llm):
+            moments = find_viral_moments_ai(
+                words=[{"start": 10.0, "end": 20.0, "text": "why are you guys saying that"}],
+                db=np.zeros(100),
+                duration=100.0,
+                title="Kai Cenat Stream",
+                uploader="Kai Cenat",
+                max_clips=1,
+                min_len=20.0,
+                max_len=50.0,
+                user_instructions="Focus specifically on when creator roasts stream chat"
+            )
+            self.assertEqual(len(moments), 1)
+            self.assertEqual(moments[0]["hook"], "HE ROASTED HIS CHAT")
+            self.assertGreaterEqual(len(captured_prompts), 1)
+            p = captured_prompts[0]
+            self.assertIn("CONTENT-CREATOR-FIRST", p)
+            self.assertIn("Focus specifically on when creator roasts stream chat", p)
+            self.assertIn("USER DIRECTIVE (HIGHEST PRIORITY)", p)
+
 if __name__ == "__main__":
     unittest.main()
