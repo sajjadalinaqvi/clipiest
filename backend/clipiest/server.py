@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
     DATA_DIR, ROOT, BACKEND_DIR, TMP_DIR, DOWNLOADS_DIR, HOST, PORT, PUBLIC_URL,
-    HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, WHISPER_MODEL,
+    HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, AI_BASE_URL, AI_KEY, WHISPER_MODEL,
     load_user_config, save_user_config, is_configured, WHISPER_MODELS,
     COOKIES_FILE, get_cookies_file
 )
@@ -173,6 +173,33 @@ def api_test_llm(body: dict):
     api_key = body.get("api_key", "")
     model = body.get("model", "")
     return test_llm_connection(provider, base_url, api_key, model)
+
+@app.get("/api/llm/ping")
+def api_llm_ping():
+    """Lightweight ambient check to see if the LLM provider/server is alive without generating tokens."""
+    cfg = load_user_config()
+    ai_cfg = cfg.get("ai", {})
+    provider = (ai_cfg.get("provider") or AI_PROVIDER or "lmstudio").lower().strip()
+    base_url = (ai_cfg.get("base_url") or AI_BASE_URL or PROVIDERS.get(provider, "http://localhost:1235/v1")).rstrip("/")
+    api_key = ai_cfg.get("api_key") or AI_KEY or ""
+    model = ai_cfg.get("model") or AI_MODELS[0]
+    try:
+        models, working_url = fetch_models_with_url(provider, base_url, api_key)
+        is_ok = bool(models)
+        return {
+            "success": is_ok,
+            "provider": provider,
+            "model": model,
+            "models_count": len(models),
+            "base_url": working_url
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "provider": provider,
+            "model": model,
+            "error": explain_ai_error(e, provider)
+        }
 
 @app.get("/api/llm/models")
 def api_get_llm_models(provider: str = "lmstudio", base_url: str = "", api_key: str = ""):

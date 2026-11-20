@@ -78,7 +78,7 @@ def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", mo
         else:
             # LM Studio, Ollama, OpenAI, Groq, OpenRouter, Custom
             m_target = model or "qwen/qwen3.5-9b"
-            res = _call_openai_compat(base_url, m_target, api_key or "lm-studio", test_prompt, allow_fallback=False)
+            res = _call_openai_compat(base_url, m_target, api_key or "lm-studio", test_prompt, allow_fallback=False, max_tokens=32)
             
         latency = int((time.monotonic() - t0) * 1000)
         return {
@@ -146,7 +146,7 @@ def fetch_models_from_provider(provider: str, base_url: str = "", api_key: str =
     models, _ = fetch_models_with_url(provider, base_url, api_key)
     return models
 
-def ask_llm(prompt: str, schema: dict = None, model: str = None) -> dict | list:
+def ask_llm(prompt: str, schema: dict = None, model: str = None, max_tokens: int = 1024) -> dict | list:
     """Invokes LLM with fallback handling and returns parsed JSON response."""
     cfg = load_user_config()
     ai_cfg = cfg.get("ai", {})
@@ -163,10 +163,10 @@ def ask_llm(prompt: str, schema: dict = None, model: str = None) -> dict | list:
             if provider == "gemini":
                 return _call_gemini(m, key, prompt)
             elif provider == "anthropic":
-                return _call_anthropic(m, key, prompt)
+                return _call_anthropic(m, key, prompt, max_tokens=max_tokens)
             else:
                 # OpenAI-compatible protocol (LM Studio, Ollama, OpenAI, Groq, OpenRouter, Custom)
-                return _call_openai_compat(base_url, m, key, prompt)
+                return _call_openai_compat(base_url, m, key, prompt, max_tokens=max_tokens)
         except Exception as e:
             last_err = e
             continue
@@ -185,7 +185,7 @@ def _call_gemini(model: str, key: str, prompt: str):
         raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
         return json.loads(_clean_json_text(raw))
 
-def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_fallback: bool = True):
+def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_fallback: bool = True, max_tokens: int = 1024):
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
@@ -201,7 +201,7 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
         "model": model or "local-model",
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 2048
+        "max_tokens": max_tokens
     }
     
     urls_to_attempt = [base_url]

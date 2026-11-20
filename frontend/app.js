@@ -178,7 +178,7 @@ async function init() {
   ]);
 
   setInterval(updateTelemetry, 5000);
-  setInterval(checkLLMStatus, 10000);
+  setInterval(checkLLMStatus, 30000);
   requestAnimationFrame(renderLoop);
 }
 
@@ -680,7 +680,7 @@ function setupControls() {
             img.crossOrigin = "anonymous";
             img.src = frameUrl;
             img.onload = () => {
-              appState.currentImageSource = img;
+              setImageSource(img);
             };
           };
           reel.appendChild(b);
@@ -693,7 +693,7 @@ function setupControls() {
       img.crossOrigin = "anonymous";
       img.src = thumbUrl;
       img.onload = () => {
-        appState.currentImageSource = img;
+        setImageSource(img);
       };
       img.onerror = () => {
         updatePreviewFrame(0);
@@ -808,13 +808,13 @@ async function loadStoryboard(sourceId) {
           btn.classList.add('active');
           const img = new Image();
           img.src = `/media/${frameFile}`;
-          img.onload = () => { appState.currentImageSource = img; };
+          img.onload = () => { setImageSource(img); };
         };
         reel.appendChild(btn);
         if (idx === 0) {
           const img = new Image();
           img.src = `/media/${frameFile}`;
-          img.onload = () => { appState.currentImageSource = img; };
+          img.onload = () => { setImageSource(img); };
         }
       });
     }
@@ -824,6 +824,22 @@ async function loadStoryboard(sourceId) {
 // -------------------------------------------------------------
 // Interactive Canvas Drawing & Dragging (Move, Resize Handles, Draw)
 // -------------------------------------------------------------
+function setImageSource(img) {
+  if (!img) return;
+  appState.currentImageSource = img;
+  if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
+  if (img.naturalWidth && img.naturalHeight) {
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    const ar = nw / nh;
+    const container = $('source-container');
+    if (container) {
+      container.style.aspectRatio = `${nw} / ${nh}`;
+    }
+    sourceCanvas.width = 960;
+    sourceCanvas.height = Math.round(960 / ar);
+  }
+}
 function setActiveTool(tool) {
   appState.activeTool = tool;
   if ($('tool-cam')) $('tool-cam').classList.toggle('active', tool === 'cam');
@@ -1049,18 +1065,25 @@ function drawPhonePreview() {
     previewCtx.fillStyle = '#1e2238';
     previewCtx.fillRect(0, 0, pw, ph);
   } else if (spec.mode === 'blur') {
+    const nw = appState.currentImageSource.naturalWidth || 1920;
+    const nh = appState.currentImageSource.naturalHeight || 1080;
+
+    // Aspect-ratio-preserved blurred background cover
     previewCtx.save();
-    previewCtx.filter = 'blur(12px)';
-    previewCtx.drawImage(appState.currentImageSource, -20, -20, pw + 40, ph + 40);
+    previewCtx.filter = 'blur(14px)';
+    const bgScale = Math.max((pw + 40) / nw, (ph + 40) / nh);
+    const bgW = nw * bgScale;
+    const bgH = nh * bgScale;
+    previewCtx.drawImage(appState.currentImageSource, (pw - bgW) / 2, (ph - bgH) / 2, bgW, bgH);
     previewCtx.restore();
 
-    // Center sharp inset
-    const ratio = Math.min(pw / appState.currentImageSource.naturalWidth, ph / appState.currentImageSource.naturalHeight);
-    const w = appState.currentImageSource.naturalWidth * ratio;
-    const h = appState.currentImageSource.naturalHeight * ratio;
+    // Center sharp inset (aspect-ratio-preserved decrease fit, matches FFmpeg)
+    const ratio = Math.min(pw / nw, ph / nh);
+    const w = nw * ratio;
+    const h = nh * ratio;
     previewCtx.drawImage(appState.currentImageSource, (pw - w) / 2, (ph - h) / 2, w, h);
   } else {
-    // Draw stacked or pip layers
+    // Draw stacked or pip layers with aspect-ratio-preserving cover (exact match to FFmpeg force_original_aspect_ratio=increase,crop=lw:lh)
     for (const layer of spec.layers || []) {
       previewCtx.save();
       const lx = layer.x / 2;
@@ -1074,14 +1097,29 @@ function drawPhonePreview() {
         previewCtx.clip();
       }
 
-      const box = layer.source === 'cam' ? appState.rect.cam : appState.rect.game;
+      const box = layer.source === 'cam' ? appState.rect.cam : (layer.source === 'full' ? { x: 0, y: 0, w: 1, h: 1 } : appState.rect.game);
       const img = appState.currentImageSource;
-      const sx = box.x * img.naturalWidth;
-      const sy = box.y * img.naturalHeight;
-      const sw = box.w * img.naturalWidth;
-      const sh = box.h * img.naturalHeight;
+      const nw = img.naturalWidth || 1920;
+      const nh = img.naturalHeight || 1080;
+      const sx = Math.max(0, box.x * nw);
+      const sy = Math.max(0, box.y * nh);
+      const sw = Math.max(1, Math.min(nw - sx, box.w * nw));
+      const sh = Math.max(1, Math.min(nh - sy, box.h * nh));
 
-      previewCtx.drawImage(img, sx, sy, sw, sh, lx, ly, lw, lh);
+      // Replicate FFmpeg scale=lw:lh:force_original_aspect_ratio=increase,crop=lw:lh
+      // Scale source crop so it covers (lw, lh) while preserving aspect ratio (zero stretching)
+      const scale = Math.max(lw / sw, lh / sh);
+      const srcUsedW = Math.min(sw, lw / scale);
+      const srcUsedH = Math.min(sh, lh / scale);
+      const srcOffX = sx + (sw - srcUsedW) / 2;
+      const srcOffY = sy + (sh - srcUsedH) / 2;
+
+      previewCtx.drawImage(
+        img,
+        Math.max(0, srcOffX), Math.max(0, srcOffY),
+        Math.min(nw - Math.max(0, srcOffX), srcUsedW), Math.min(nh - Math.max(0, srcOffY), srcUsedH),
+        lx, ly, lw, lh
+      );
       previewCtx.restore();
     }
   }
@@ -1228,26 +1266,15 @@ async function checkLLMStatus() {
   const pill = $('llm-status-pill');
   const startBtn = $('start-scout-btn');
   if (!pill) return;
+  // Never disrupt active LLM moment analysis with ambient health pings
+  if (appState.scoutingInProgress) return;
 
   try {
-    const cfg = await api('/api/config');
-    const ai = cfg.config?.ai || {};
-    const modelName = ai.model || 'qwen/qwen3.5-9b';
-    const baseUrl = ai.base_url || 'http://localhost:1235/v1';
+    const pingRes = await api('/api/llm/ping').catch(() => ({ success: false }));
 
-    const testRes = await api('/api/llm/test', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: ai.provider || 'lmstudio',
-        base_url: baseUrl,
-        api_key: ai.api_key || '',
-        model: modelName
-      })
-    }).catch(() => ({ success: false }));
-
-    if (testRes.success) {
+    if (pingRes.success) {
       pill.className = 'pill-badge pill-connected';
-      pill.textContent = `● LLM Connected (${modelName})`;
+      pill.textContent = `● LLM Connected (${pingRes.model || 'Ready'})`;
       if (startBtn && (appState.sourceId || appState.sourceUrl)) {
         startBtn.disabled = false;
       }
@@ -1312,6 +1339,7 @@ async function startMomentScout() {
   if (statusText) statusText.innerHTML = '<span class="spin">⟳</span> Analyzing audio energy peaks, loudness, and transcript with connected LLM...';
   if (progressBar) progressBar.style.width = '30%';
 
+  appState.scoutingInProgress = true;
   try {
     const payload = {
       url: url || undefined,
@@ -1356,6 +1384,7 @@ async function startMomentScout() {
       alert('Moment analysis failed: ' + cleanMsg);
     }
   } finally {
+    appState.scoutingInProgress = false;
     btn.disabled = false;
     btn.innerHTML = origHtml;
   }
@@ -1446,8 +1475,7 @@ async function updatePreviewFrame(sec) {
   img.crossOrigin = "anonymous";
   img.src = frameUrl;
   img.onload = () => {
-    appState.currentImageSource = img;
-    if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
+    setImageSource(img);
   };
 }
 
@@ -1965,20 +1993,20 @@ async function triggerMakeClips() {
     return alert('Please paste a video URL or upload a file first.');
   }
 
-    const payload = {
-      url: url || undefined,
-      id: appState.sourceId || undefined,
-      count: Number($('clip-count')?.value || 4),
-      min_len: Number($('min-len')?.value || 30),
-      max_len: Number($('max-len')?.value || 60),
-      mode: $('mode-select')?.value || 'fast',
-      layout: appState.layout,
-      caption_style: appState.captionStyle,
-      top: appState.topH,
-      cam: appState.rect.cam,
-      game: appState.rect.game,
-      creator_id: $('job-creator-select')?.value || undefined
-    };
+  const payload = {
+    url: url || undefined,
+    id: appState.sourceId || undefined,
+    count: Number($('clip-count')?.value || 4),
+    min_len: Number($('min-len')?.value || 30),
+    max_len: Number($('max-len')?.value || 60),
+    mode: $('mode-select')?.value || 'fast',
+    layout: appState.layout,
+    caption_style: appState.captionStyle,
+    top: appState.topH,
+    cam: appState.rect.cam,
+    game: appState.rect.game,
+    creator_id: $('job-creator-select')?.value || undefined
+  };
 
   $('execution-panel').hidden = false;
   $('results-grid').innerHTML = '';

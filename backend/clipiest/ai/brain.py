@@ -292,26 +292,45 @@ Format strictly as a JSON array of objects:
         windows.append((t, min(duration, t + WINDOW_SEC)))
         t += WINDOW_SEC - OVERLAP_SEC
 
-    per_window = max(2, min(6, int(np.ceil(max_clips * 1.5 / max(1, len(windows)))) + 1))
-    game_rule = f"This stream is {game_name}. Focus on plays, clutching, fails, or hilarious reactions." if game_name else ""
-    
-    found_moments = []
-    ai_success = False
-
-    for a, b in windows:
+    # Score each window by loudness energy, hype punctuation, and speech activity
+    window_candidates = []
+    for idx, (a, b) in enumerate(windows):
         chunk = [l for l in lines if a <= l["s"] < b]
         if len(chunk) < 3:
             continue
-            
-        fmt_chunk = format_transcript_lines(chunk, limit_chars=14000)
+        loud_cnt = sum(1 for l in chunk if l.get("loud"))
+        punc_cnt = sum(l["text"].count("!") + l["text"].count("?") for l in chunk)
+        # Weight loud peaks heavily (4x) and energetic punctuation (2x)
+        excitement_score = loud_cnt * 4.0 + punc_cnt * 2.0 + len(chunk) * 1.0
+        window_candidates.append({
+            "idx": idx,
+            "a": a,
+            "b": b,
+            "score": excitement_score,
+            "chunk": chunk
+        })
+
+    # Sort candidates by excitement; query at most the top 2 windows (or 1 if video is short/count is low)
+    window_candidates.sort(key=lambda x: -x["score"])
+    target_window_count = 1 if max_clips <= 4 and len(window_candidates) > 0 else min(2, len(window_candidates))
+    selected_windows = sorted(window_candidates[:target_window_count], key=lambda x: x["a"])
+
+    game_rule = f"This stream is {game_name}. Focus on plays, clutching, fails, or hilarious reactions." if game_name else ""
+    found_moments = []
+    ai_success = False
+
+    for win in selected_windows:
+        a, b, chunk = win["a"], win["b"], win["chunk"]
+        # Limit transcript chunk to most energetic 4,000 characters
+        fmt_chunk = format_transcript_lines(chunk[:min(len(chunk), 60)], limit_chars=4000)
         prompt = (
-            HEAD.format(title=_clean_text(title, 80) or "Video", uploader=_clean_text(uploader, 50) or "Channel", n=per_window, game_rule=game_rule)
+            HEAD.format(title=_clean_text(title, 80) or "Video", uploader=_clean_text(uploader, 50) or "Channel", n=max_clips, game_rule=game_rule)
             + RULES.format(min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
         )
         
         try:
-            log(f"Querying LLM for viral moments in window {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt)
+            log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
+            raw_res = ask_llm(prompt, max_tokens=1024)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
@@ -345,6 +364,9 @@ Format strictly as a JSON array of objects:
                         "reason": str(c.get("reason", "Viral moment"))[:200]
                     })
                 ai_success = True
+                # If we've gathered enough strong moments, stop early and avoid redundant LLM calls
+                if len(found_moments) >= max_clips:
+                    break
         except Exception as e:
             log(f"AI scouting window {a:.0f}-{b:.0f}s failed: {e}")
 
