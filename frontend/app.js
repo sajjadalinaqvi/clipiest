@@ -165,7 +165,7 @@ async function init() {
   setupStorageManager();
   setupConfigurationEvents();
   setupCreatorEvents();
-  
+
   await Promise.all([
     checkInitialConfiguration(),
     checkLLMStatus(),
@@ -200,7 +200,7 @@ async function checkInitialConfiguration() {
     const data = await api('/api/config');
     appState.configured = !!data.configured;
     updateSettingsDisplay(data);
-    
+
     if (!data.configured) {
       document.querySelector('.app-layout').classList.add('app-locked');
       openConfigModal();
@@ -453,7 +453,7 @@ async function loadWeights() {
     container.innerHTML = Object.entries(weights)
       .map(([k, v]) => `<div class="weight-pill"><span>${k}:</span> <b>${Number(v).toFixed(3)}</b></div>`)
       .join('');
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // -------------------------------------------------------------
@@ -628,7 +628,9 @@ function setupControls() {
 
       // Update badge
       const durStr = res.duration_formatted || `${Math.round(res.duration)}s`;
-      $('source-status-badge').textContent = `${res.game || 'Video'} · ${durStr} · ${appState.sourceWidth}x${appState.sourceHeight}`;
+      if ($('source-status-badge')) {
+        $('source-status-badge').textContent = `${res.game || 'Video'} · ${durStr} · ${appState.sourceWidth}x${appState.sourceHeight}`;
+      }
 
       // Show success status
       statusEl.className = 'status-message active-success';
@@ -687,34 +689,36 @@ function setupControls() {
     }
   };
 
-  // Auto-Detect Facecam
-  $('autocam-btn').onclick = async () => {
-    if (!appState.sourceId) {
-      return alert('Upload a video or link a source to run automatic facecam detection.');
-    }
-    try {
-      $('autocam-btn').textContent = 'Scanning frames...';
-      const res = await api(`/preview/${appState.sourceId}/autocam`, { method: 'POST' });
-      if (res.detected && res.box) {
-        appState.rect.cam = res.box;
-        const confPct = typeof res.confidence === 'number' ? Math.round(res.confidence * 100) : (res.confidence === 'high' ? 95 : 75);
-        alert(`Facecam detected with ${confPct}% confidence!`);
-      } else {
-        alert('No static facecam region detected in video.');
+  // Auto-Detect Facecam (if present)
+  if ($('autocam-btn')) {
+    $('autocam-btn').onclick = async () => {
+      if (!appState.sourceId) {
+        return alert('Upload a video or link a source to run automatic facecam detection.');
       }
-    } catch (e) {
-      alert('Detection failed: ' + e.message);
-    } finally {
-      $('autocam-btn').textContent = '✦ Auto-Detect Facecam (CV)';
-    }
-  };
+      try {
+        $('autocam-btn').textContent = 'Scanning frames...';
+        const res = await api(`/preview/${appState.sourceId}/autocam`, { method: 'POST' });
+        if (res.detected && res.box) {
+          appState.rect.cam = res.box;
+          const confPct = typeof res.confidence === 'number' ? Math.round(res.confidence * 100) : (res.confidence === 'high' ? 95 : 75);
+          alert(`Facecam detected with ${confPct}% confidence!`);
+        } else {
+          alert('No static facecam region detected in video.');
+        }
+      } catch (e) {
+        alert('Detection failed: ' + e.message);
+      } finally {
+        $('autocam-btn').textContent = '✦ Auto-Detect Facecam (CV)';
+      }
+    };
+  }
 
-  // Make Clips Trigger
-  $('make-btn').onclick = triggerMakeClips;
-  $('make-btn-bottom').onclick = triggerMakeClips;
+  // Make Clips Trigger (if present)
+  if ($('make-btn')) $('make-btn').onclick = triggerMakeClips;
+  if ($('make-btn-bottom')) $('make-btn-bottom').onclick = triggerMakeClips;
 
-  // Manual Export Trigger
-  $('manual-export-btn').onclick = triggerManualExport;
+  // Manual Export Trigger (if present)
+  if ($('manual-export-btn')) $('manual-export-btn').onclick = triggerManualExport;
 
   // Live Stream Controls
   $('live-start-btn').onclick = startLiveStream;
@@ -747,7 +751,9 @@ async function handleFileUpload(file) {
     appState.duration = data.duration;
 
     $('time-end').value = Math.min(30, data.duration);
-    $('source-status-badge').textContent = `${data.w}x${data.h} · ${(data.duration).toFixed(1)}s`;
+    if ($('source-status-badge')) {
+      $('source-status-badge').textContent = `${data.w}x${data.h} · ${(data.duration).toFixed(1)}s`;
+    }
     $('import-status').textContent = 'Upload complete! Click Start Video Analysis in Step 2.';
     if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
     if ($('start-scout-btn')) $('start-scout-btn').disabled = false;
@@ -787,7 +793,7 @@ async function loadStoryboard(sourceId) {
         }
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // -------------------------------------------------------------
@@ -1072,7 +1078,7 @@ function drawPhonePreview() {
     previewCtx.textAlign = 'center';
     previewCtx.textBaseline = 'middle';
     previewCtx.font = '800 22px Plus Jakarta Sans, sans-serif';
-    
+
     // Measure and background banner
     const textWidth = previewCtx.measureText(hook.toUpperCase()).width;
     const padX = 18, padY = 8;
@@ -1176,7 +1182,7 @@ function drawPhonePreview() {
 
   // Draw Sample or Transcribed Subtitles
   const subY = Number($('caption-y-slider')?.value || 1450) / 2;
-  const sampleWords = appState.sliceWords && appState.sliceWords.length 
+  const sampleWords = appState.sliceWords && appState.sliceWords.length
     ? appState.sliceWords.slice(0, 3).map(w => w.text || w.w).join(' ').toUpperCase()
     : 'CLIPIEST AI MOMENT';
   previewCtx.save();
@@ -1405,7 +1411,7 @@ async function updatePreviewFrame(sec) {
   const sliceId = appState.fetchedSliceId || '';
 
   const frameUrl = `/api/preview/frame?id=${encodeURIComponent(id)}&url=${encodeURIComponent(url)}&sec=${midSec.toFixed(2)}&slice_id=${encodeURIComponent(sliceId)}&t=${Date.now()}`;
-  
+
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = frameUrl;
@@ -1631,7 +1637,7 @@ function pollFinalJob(jobId) {
         $('generate-final-clip-btn').disabled = false;
         alert('Render failed: ' + data.error);
       }
-    } catch (_) {}
+    } catch (_) { }
   }, 1200);
 }
 
@@ -1846,20 +1852,20 @@ async function triggerMakeClips() {
     return alert('Please paste a video URL or upload a file first.');
   }
 
-  const payload = {
-    url: url || undefined,
-    id: appState.sourceId || undefined,
-    count: Number($('clip-count').value),
-    min_len: Number($('min-len').value),
-    max_len: Number($('max-len').value),
-    mode: $('mode-select').value,
-    layout: appState.layout,
-    caption_style: appState.captionStyle,
-    top: appState.topH,
-    cam: appState.rect.cam,
-    game: appState.rect.game,
-    creator_id: $('job-creator-select')?.value || undefined
-  };
+    const payload = {
+      url: url || undefined,
+      id: appState.sourceId || undefined,
+      count: Number($('clip-count')?.value || 4),
+      min_len: Number($('min-len')?.value || 30),
+      max_len: Number($('max-len')?.value || 60),
+      mode: $('mode-select')?.value || 'fast',
+      layout: appState.layout,
+      caption_style: appState.captionStyle,
+      top: appState.topH,
+      cam: appState.rect.cam,
+      game: appState.rect.game,
+      creator_id: $('job-creator-select')?.value || undefined
+    };
 
   $('execution-panel').hidden = false;
   $('results-grid').innerHTML = '';
@@ -1924,7 +1930,7 @@ function pollJob(jobId) {
         appState.pollTimer = null;
         loadLibrary();
       }
-    } catch (_) {}
+    } catch (_) { }
   }, 1200);
 }
 
@@ -1967,7 +1973,9 @@ function renderClipCards(clips, container) {
       $('time-start').value = Math.round(startSec * 10) / 10;
       $('time-end').value = Math.round(endSec * 10) / 10;
       if (clip.hook) $('hook-input').value = clip.hook;
-      $('source-status-badge').textContent = `Slice: ${formatTime(startSec)} - ${formatTime(endSec)}`;
+      if ($('source-status-badge')) {
+        $('source-status-badge').textContent = `Slice: ${formatTime(startSec)} - ${formatTime(endSec)}`;
+      }
       document.querySelectorAll('.clip-card').forEach(c => c.style.borderColor = 'var(--border)');
       card.style.borderColor = 'var(--cyan)';
     };
@@ -2051,7 +2059,7 @@ function pollLiveStatus() {
       const mm = Math.floor(data.buffer_seconds / 60);
       const ss = Math.floor(data.buffer_seconds % 60);
       $('live-buffer-len').textContent = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-    } catch (_) {}
+    } catch (_) { }
   }, 2000);
 }
 
@@ -2097,7 +2105,7 @@ async function loadLibrary() {
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin: 4px 0 6px;">
             <span class="clip-time-badge">⏱ ${formatTime(clip.start || 0)} - ${formatTime(clip.end || 30)}</span>
-            <small style="color:var(--text-muted);font-size:11px;">${new Date(clip.created * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+            <small style="color:var(--text-muted);font-size:11px;">${new Date(clip.created * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
           </div>
           <div class="clip-actions">
             <a href="${clip.file}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
@@ -2118,7 +2126,7 @@ async function loadLibrary() {
 
       container.appendChild(card);
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 
 async function openSavedClip(clipId) {
@@ -2130,7 +2138,7 @@ async function openSavedClip(clipId) {
     appState.sourceWidth = data.source.w;
     appState.sourceHeight = data.source.h;
     appState.duration = data.source.duration;
-    
+
     if (s.cam) appState.rect.cam = s.cam;
     if (s.game) appState.rect.game = s.game;
     if (s.layout) {
@@ -2150,10 +2158,12 @@ async function openSavedClip(clipId) {
     if (s.start !== undefined) $('time-start').value = s.start;
     if (s.end !== undefined) $('time-end').value = s.end;
 
-    $('source-status-badge').textContent = `Re-editing: ${clipId}`;
+    if ($('source-status-badge')) {
+      $('source-status-badge').textContent = `Re-editing: ${clipId}`;
+    }
     $('import-status').hidden = false;
     $('import-status').textContent = `Loaded clip ${clipId} for non-destructive re-framing.`;
-    
+
     loadStoryboard(data.source.id);
   } catch (e) {
     alert('Failed to load clip for re-editing: ' + e.message);
@@ -2385,7 +2395,9 @@ async function loadCreatorVideos(cid) {
         $('job-creator-select').value = cid;
         onJobCreatorSelectChange();
         $('canvas-placeholder').hidden = true;
-        $('source-status-badge').textContent = `Creator Video: ${v.name}`;
+        if ($('source-status-badge')) {
+          $('source-status-badge').textContent = `Creator Video: ${v.name}`;
+        }
         switchTab('create');
         loadStoryboard(v.stem);
       };

@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Clipiest — Ultimate AI Video & Gaming Clip Engine</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body class="theme-dark">
   <div class="app-layout">
     <!-- Sidebar Navigation -->
@@ -70,9 +74,12 @@
       </div>
 
       <div class="sidebar-footer">
-        <button id="sidebar-storage-btn" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px;">💾 Data &amp; Storage</button>
-        <button id="reopen-llm-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">⚙️ Configure LLM</button>
-        <button id="open-folder-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">📁 Open Data Folder</button>
+        <button id="sidebar-storage-btn" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px;">💾 Data
+          &amp; Storage</button>
+        <button id="reopen-llm-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">⚙️ Configure
+          LLM</button>
+        <button id="open-folder-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">📁 Open Data
+          Folder</button>
         <div class="version-tag">Clipiest v1.0.0 Monorepo</div>
       </div>
     </aside>
@@ -84,7 +91,8 @@
         <div class="pane-header">
           <div>
             <h2>Studio &amp; Interactive Clip Discovery</h2>
-            <p>Upload video or fetch from YouTube, Twitch, or Kick. Scout viral moments with LLM, customize framing &amp; captions, and render directly to Downloads.</p>
+            <p>Upload video or fetch from YouTube, Twitch, or Kick. Scout viral moments with LLM, customize framing
+              &amp; captions, and render directly to Downloads.</p>
           </div>
           <div class="header-actions">
             <span id="studio-workflow-badge" class="badge">Step 1: Ingest Video</span>
@@ -96,6 +104,9 @@
           <div class="panel-title">
             <span class="step-num">01</span>
             <h3>Source Video &amp; Clip Settings</h3>
+            <div class="panel-extra">
+              <span id="source-status-badge" class="badge">No video loaded</span>
+            </div>
           </div>
 
           <!-- Content Creator Workspace Assignment -->
@@ -115,12 +126,14 @@
 
           <div class="import-grid">
             <div class="url-input-wrap">
-              <input type="url" id="video-url" placeholder="Paste YouTube, Twitch replay, or Kick link (e.g. https://www.youtube.com/watch?v=...)">
+              <input type="url" id="video-url"
+                placeholder="Paste YouTube, Twitch replay, or Kick link (e.g. https://www.youtube.com/watch?v=...)">
               <button id="preview-btn" class="btn-primary">Fetch Video ↗</button>
             </div>
             <div class="upload-zone" id="upload-zone">
               <input type="file" id="file-input" accept="video/mp4,video/mkv,video/webm,video/quicktime" hidden>
-              <span>↑ Drag &amp; drop video or <button type="button" class="btn-link" id="browse-btn">browse file</button></span>
+              <span>↑ Drag &amp; drop video or <button type="button" class="btn-link" id="browse-btn">browse
+                  file</button></span>
             </div>
           </div>
 
@@ -170,17 +183,21 @@
                 <button type="button" id="scout-configure-llm-btn" class="btn-ghost btn-xs">⚙️ LLM Settings</button>
               </div>
               <p class="scout-desc">
-                When fetch or upload is complete, start the AI analysis. Clipiest will analyze speech density, energy spikes, and narrative hooks using your connected LLM to recommend the most viral moments with exact timestamps (no full video download or rendering needed yet).
+                When fetch or upload is complete, start the AI analysis. Clipiest will analyze speech density, energy
+                spikes, and narrative hooks using your connected LLM to recommend the most viral moments with exact
+                timestamps (no full video download or rendering needed yet).
               </p>
             </div>
             <div class="scout-banner-right">
-              <button id="start-scout-btn" class="btn-primary btn-glow" disabled>⚡ Start Video Analysis (Find Viral Moments with LLM)</button>
+              <button id="start-scout-btn" class="btn-primary btn-glow" disabled>⚡ Start Video Analysis (Find Viral
+                Moments with LLM)</button>
             </div>
           </div>
 
           <div id="scout-progress-wrap" class="scout-progress-wrap" hidden>
             <div class="scout-progress-header">
-              <span id="scout-status-text" class="scout-status-text"><span class="spin">⟳</span> Analyzing audio transcript and evaluating viral hooks with LLM...</span>
+              <span id="scout-status-text" class="scout-status-text"><span class="spin">⟳</span> Analyzing audio
+                transcript and evaluating viral hooks with LLM...</span>
             </div>
             <div class="progress-bar-wrap">
               <div id="scout-progress-bar" class="progress-bar progress-animated" style="width: 25%;"></div>
@@ -207,7 +224,8 @@
             <div id="moments-list" class="moments-list">
               <div class="empty-moments-state">
                 <div class="empty-icon">💡</div>
-                <p>No moments scouted yet. Fetch or upload a video in Step 1, then click <strong>Start Video Analysis</strong> in Step 2 to generate viral timestamps.</p>
+                <p>No moments scouted yet. Fetch or upload a video in Step 1, then click <strong>Start Video
+                    Analysis</strong> in Step 2 to generate viral timestamps.</p>
               </div>
             </div>
           </div>
@@ -224,7 +242,8 @@
                 <div class="canvas-time-inputs">
                   <label>Start: <input type="number" id="time-start" value="0" min="0" step="0.5">s</label>
                   <label>End: <input type="number" id="time-end" value="30" min="0.1" step="0.5">s</label>
-                  <button type="button" id="refresh-frame-btn" class="btn-secondary btn-xs" title="Fetch video frame at selected timestamp">🔄 Update Preview Frame</button>
+                  <button type="button" id="refresh-frame-btn" class="btn-secondary btn-xs"
+                    title="Fetch video frame at selected timestamp">🔄 Update Preview Frame</button>
                 </div>
               </div>
 
@@ -269,7 +288,8 @@
           <div class="slice-action-card">
             <div class="slice-info">
               <h4>📥 Fetch Specific Video Slice</h4>
-              <p>Clipiest will fetch <strong>only this requested slice</strong> (e.g. 30s) from the video without downloading the entire 2-hour file.</p>
+              <p>Clipiest will fetch <strong>only this requested slice</strong> (e.g. 30s) from the video without
+                downloading the entire 2-hour file.</p>
             </div>
             <div class="slice-btn-wrap">
               <button id="fetch-slice-btn" class="btn-primary btn-glow">📥 Get Clip (Fetch Slice Only)</button>
@@ -330,7 +350,8 @@
 
             <div class="captions-action-row">
               <button id="generate-captions-btn" class="btn-secondary btn-glow">✍️ Generate Captions &amp; Hook</button>
-              <span id="captions-hint" class="workspace-hint">Transcribes slice audio using local Faster-Whisper to preview styled subtitles on phone canvas.</span>
+              <span id="captions-hint" class="workspace-hint">Transcribes slice audio using local Faster-Whisper to
+                preview styled subtitles on phone canvas.</span>
             </div>
             <div id="captions-status-msg" class="status-message" hidden></div>
           </div>
@@ -346,7 +367,9 @@
           <div class="final-render-bar">
             <div class="final-render-info">
               <h4>Ready to render vertical 9:16 MP4?</h4>
-              <p>Renders full 1080x1920 video with burned-in subtitles, saves a copy directly into your <code>./Downloads</code> folder, and starts browser download.</p>
+              <p>Renders full 1080x1920 video with burned-in subtitles, saves a copy directly into your
+                <code>./Downloads</code> folder, and starts browser download.
+              </p>
             </div>
             <button id="generate-final-clip-btn" class="btn-primary btn-glow btn-lg">🚀 Generate Clip</button>
           </div>
@@ -471,8 +494,10 @@
 
         <!-- Sub Tabs: LLM & Whisper Settings | Data & Storage Manager -->
         <div class="sub-nav-tabs">
-          <button class="sub-tab-btn active" data-subtab="settings-llm" id="subtab-btn-llm">⚡ AI Model &amp; Whisper Settings</button>
-          <button class="sub-tab-btn" data-subtab="settings-storage" id="subtab-btn-storage">💾 Data &amp; Storage Manager (data/)</button>
+          <button class="sub-tab-btn active" data-subtab="settings-llm" id="subtab-btn-llm">⚡ AI Model &amp; Whisper
+            Settings</button>
+          <button class="sub-tab-btn" data-subtab="settings-storage" id="subtab-btn-storage">💾 Data &amp; Storage
+            Manager (data/)</button>
         </div>
 
         <!-- Sub Pane 1: LLM & Whisper -->
@@ -497,8 +522,10 @@
               </div>
               <div class="metric-card">
                 <h3>Configuration Actions</h3>
-                <p class="muted" style="margin-bottom:12px;font-size:12px;">Update base URL, API tokens, switch LM Studio models, or change Whisper accuracy.</p>
-                <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp; Whisper</button>
+                <p class="muted" style="margin-bottom:12px;font-size:12px;">Update base URL, API tokens, switch LM
+                  Studio models, or change Whisper accuracy.</p>
+                <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp;
+                  Whisper</button>
               </div>
             </div>
           </div>
@@ -605,8 +632,10 @@
 
         <!-- Sub Tabs: Clips | Videos | Activity Log -->
         <div class="sub-nav-tabs">
-          <button class="sub-tab-btn active" data-subtab="creator-clips" id="subtab-btn-clips">✂️ Generated Clips (<span id="creator-sub-clips-count">0</span>)</button>
-          <button class="sub-tab-btn" data-subtab="creator-videos" id="subtab-btn-videos">📼 Source Videos (<span id="creator-sub-videos-count">0</span>)</button>
+          <button class="sub-tab-btn active" data-subtab="creator-clips" id="subtab-btn-clips">✂️ Generated Clips (<span
+              id="creator-sub-clips-count">0</span>)</button>
+          <button class="sub-tab-btn" data-subtab="creator-videos" id="subtab-btn-videos">📼 Source Videos (<span
+              id="creator-sub-videos-count">0</span>)</button>
           <button class="sub-tab-btn" data-subtab="creator-logs" id="subtab-btn-logs">📜 Activity History</button>
         </div>
 
@@ -642,8 +671,10 @@
         <button id="creator-modal-close" class="btn-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">Each creator gets an isolated workspace with dedicated <code>videos/</code> and <code>clips/</code> folders on disk, preferred framing defaults, and independent activity history.</p>
-        
+        <p class="modal-desc">Each creator gets an isolated workspace with dedicated <code>videos/</code> and
+          <code>clips/</code> folders on disk, preferred framing defaults, and independent activity history.
+        </p>
+
         <input type="hidden" id="creator-edit-id" value="">
         <div class="cfg-field">
           <label for="creator-input-name">Creator Name *</label>
@@ -651,7 +682,8 @@
         </div>
         <div class="cfg-field">
           <label for="creator-input-channel">Channel or Social Link (YouTube, Twitch, Kick)</label>
-          <input type="url" id="creator-input-channel" placeholder="https://youtube.com/@channel or https://twitch.tv/channel">
+          <input type="url" id="creator-input-channel"
+            placeholder="https://youtube.com/@channel or https://twitch.tv/channel">
         </div>
         <div class="form-row-2">
           <div class="cfg-field">
@@ -675,7 +707,8 @@
         </div>
         <div class="cfg-field">
           <label for="creator-input-notes">Notes / Style Preferences</label>
-          <textarea id="creator-input-notes" rows="2" placeholder="e.g. High intensity gaming moments, keep clips under 45s"></textarea>
+          <textarea id="creator-input-notes" rows="2"
+            placeholder="e.g. High intensity gaming moments, keep clips under 45s"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -692,7 +725,8 @@
         <div class="icon-wrap">⚡</div>
         <div>
           <h2>Configure AI Language Model (LLM)</h2>
-          <p>Clipiest requires an LLM to evaluate gaming highlights, detect viral hooks, and score comedic/clutch moments. Set up your local LM Studio, Ollama, or API key to unlock the studio.</p>
+          <p>Clipiest requires an LLM to evaluate gaming highlights, detect viral hooks, and score comedic/clutch
+            moments. Set up your local LM Studio, Ollama, or API key to unlock the studio.</p>
         </div>
       </div>
 
@@ -748,7 +782,8 @@
             <span>Endpoint Base URL</span>
             <span class="field-hint" id="cfg-url-hint">LM Studio default: http://127.0.0.1:1234/v1</span>
           </label>
-          <input type="text" id="cfg-base-url" value="http://127.0.0.1:1234/v1" placeholder="e.g. http://127.0.0.1:1234/v1">
+          <input type="text" id="cfg-base-url" value="http://127.0.0.1:1234/v1"
+            placeholder="e.g. http://127.0.0.1:1234/v1">
         </div>
 
         <div class="cfg-field" id="cfg-api-key-wrap">
@@ -765,8 +800,10 @@
             <span class="field-hint">Name of model loaded in LM Studio or cloud API</span>
           </label>
           <div class="cfg-input-row">
-            <input type="text" id="cfg-model" value="local-model" placeholder="e.g. qwen2.5-7b-instruct, gpt-4o-mini, etc.">
-            <button type="button" id="cfg-fetch-models-btn" class="btn-secondary" style="white-space:nowrap;">🔄 Fetch Models</button>
+            <input type="text" id="cfg-model" value="local-model"
+              placeholder="e.g. qwen2.5-7b-instruct, gpt-4o-mini, etc.">
+            <button type="button" id="cfg-fetch-models-btn" class="btn-secondary" style="white-space:nowrap;">🔄 Fetch
+              Models</button>
           </div>
           <select id="cfg-models-dropdown" style="margin-top:6px;" hidden></select>
         </div>
@@ -803,7 +840,8 @@
         <h3 id="media-preview-title">File Preview</h3>
         <button id="media-preview-close" class="btn-close">&times;</button>
       </div>
-      <div class="modal-body" id="media-preview-body" style="min-height:300px;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-body" id="media-preview-body"
+        style="min-height:300px;display:flex;align-items:center;justify-content:center;">
         <!-- Dynamic viewer -->
       </div>
       <div class="modal-footer">
@@ -815,4 +853,5 @@
 
   <script src="/static/app.js"></script>
 </body>
+
 </html>
