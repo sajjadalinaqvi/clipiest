@@ -21,7 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
     DATA_DIR, ROOT, BACKEND_DIR, TMP_DIR, HOST, PORT, PUBLIC_URL,
-    HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, WHISPER_MODEL
+    HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, WHISPER_MODEL,
+    load_user_config, save_user_config, is_configured, WHISPER_MODELS
 )
 from .pipeline.orchestrator import run_clip_pipeline
 from .pipeline.queue import JobQueue, SystemMonitor
@@ -33,7 +34,7 @@ from .rendering.reedit import attach_reedit, find_file
 from .vision.previews import extract_storyboard, extract_seek_frame
 from .vision.facecam import detect_facecam
 from .ai.learn import record_feedback, load_weights
-from .ai.providers import list_supported_providers
+from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider
 from .live.session import LiveClipManager
 from .storage.manager import get_disk_info, open_folder_in_os
 
@@ -78,6 +79,38 @@ def get_source_file(source_id: str) -> Optional[Path]:
     return find_clip_file(f"{source_id}.mp4")
 
 # -------------------------------------------------------------
+# Configuration & Setup Gate Endpoints
+# -------------------------------------------------------------
+@app.get("/api/config")
+def get_system_config():
+    cfg = load_user_config()
+    return {
+        **cfg,
+        "whisper_models": WHISPER_MODELS,
+        "providers": list_supported_providers()
+    }
+
+@app.post("/api/config")
+def update_system_config(body: dict):
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid JSON body.")
+    saved = save_user_config(body)
+    return {"success": True, "config": saved}
+
+@app.post("/api/llm/test")
+def api_test_llm(body: dict):
+    provider = body.get("provider", "lmstudio")
+    base_url = body.get("base_url", "")
+    api_key = body.get("api_key", "")
+    model = body.get("model", "")
+    return test_llm_connection(provider, base_url, api_key, model)
+
+@app.get("/api/llm/models")
+def api_get_llm_models(provider: str = "lmstudio", base_url: str = "", api_key: str = ""):
+    models = fetch_models_from_provider(provider, base_url, api_key)
+    return {"provider": provider, "models": models}
+
+# -------------------------------------------------------------
 # System & Telemetry Endpoints
 # -------------------------------------------------------------
 @app.get("/api/telemetry")
@@ -85,16 +118,20 @@ def get_telemetry():
     sys_metrics = SystemMonitor.get_metrics()
     disk_info = get_disk_info(DATA_DIR)
     active_jobs = sum(1 for v in state.values() if isinstance(v, dict) and v.get("status") == "running")
+    cfg = load_user_config()
+    ai_cfg = cfg.get("ai", {})
+    wh_cfg = cfg.get("whisper", {})
     return {
         **sys_metrics,
         "disk": disk_info,
         "active_jobs": active_jobs,
+        "configured": is_configured(),
         "hardware": {
             "nvenc": HAS_NVENC,
             "qsv": HAS_QSV,
-            "whisper_model": WHISPER_MODEL,
-            "ai_provider": AI_PROVIDER,
-            "ai_models": AI_MODELS
+            "whisper_model": wh_cfg.get("model", WHISPER_MODEL),
+            "ai_provider": ai_cfg.get("provider", AI_PROVIDER),
+            "ai_models": [ai_cfg.get("model", "local-model")]
         }
     }
 
@@ -214,6 +251,9 @@ def get_ai_providers():
 @app.post("/api/make")
 @app.post("/api/jobs")
 def create_clipping_job(body: dict):
+    if not is_configured():
+        raise HTTPException(400, "LLM is not configured yet. Please complete initial LLM setup in settings first.")
+
     url = str(body.get("url", "")).strip()
     source_id = str(body.get("id", "")).strip()
     if not url and not source_id:

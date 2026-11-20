@@ -44,16 +44,85 @@ HOST = env("CLIPIEST_HOST", "127.0.0.1")
 PORT = int(env("CLIPIEST_PORT", "8780"))
 PUBLIC_URL = (env("CLIPIEST_PUBLIC_URL", f"http://{HOST}:{PORT}")).rstrip("/")
 
-# AI Settings (defaults to Gemini or Ollama)
-AI_PROVIDER = env("CLIPIEST_AI_PROVIDER", env("PEAKCUT_AI_PROVIDER", "gemini")).strip().lower()
-AI_KEY = env("CLIPIEST_AI_KEY", env("PEAKCUT_AI_KEY", ""))
-AI_MODELS = [m.strip() for m in (env("CLIPIEST_AI_MODELS") or env("PEAKCUT_AI_MODELS") or "gemini-2.5-flash,gpt-4o-mini,llama3.2:3b").split(",") if m.strip()]
-AI_BASE_URL = (env("CLIPIEST_AI_BASE_URL") or env("PEAKCUT_AI_BASE_URL") or "").rstrip("/")
+CONFIG_FILE = DATA_DIR / "config.json"
+
+WHISPER_MODELS = [
+    "large-v3-turbo",
+    "large-v3",
+    "medium",
+    "small",
+    "base",
+    "tiny"
+]
+
+def load_user_config() -> dict:
+    import json
+    if CONFIG_FILE.exists():
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return {
+        "configured": False,
+        "ai": {
+            "provider": "lmstudio",
+            "base_url": "http://127.0.0.1:1234/v1",
+            "api_key": "",
+            "model": "local-model"
+        },
+        "whisper": {
+            "engine": "faster_whisper",
+            "model": "large-v3-turbo",
+            "use_cpu": False
+        }
+    }
+
+def save_user_config(cfg: dict) -> dict:
+    import json
+    global AI_PROVIDER, AI_KEY, AI_MODELS, AI_BASE_URL, WHISPER_MODEL, USE_CPU
+    cfg["configured"] = True
+    ai_cfg = cfg.get("ai", {})
+    AI_PROVIDER = ai_cfg.get("provider", "lmstudio").strip().lower()
+    AI_KEY = ai_cfg.get("api_key", "").strip()
+    AI_BASE_URL = (ai_cfg.get("base_url", "")).strip().rstrip("/")
+    model_name = ai_cfg.get("model", "").strip() or "local-model"
+    AI_MODELS = [model_name]
+
+    whisper_cfg = cfg.get("whisper", {})
+    WHISPER_MODEL = whisper_cfg.get("model", "large-v3-turbo")
+    USE_CPU = bool(whisper_cfg.get("use_cpu", False))
+
+    CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
+
+def is_configured() -> bool:
+    cfg = load_user_config()
+    return bool(cfg.get("configured", False))
+
+# Initial runtime values loaded from config.json or fallback
+_initial_cfg = load_user_config()
+if _initial_cfg.get("configured"):
+    _ai = _initial_cfg.get("ai", {})
+    AI_PROVIDER = _ai.get("provider", "lmstudio").strip().lower()
+    AI_KEY = _ai.get("api_key", "").strip()
+    AI_BASE_URL = (_ai.get("base_url", "")).strip().rstrip("/")
+    AI_MODELS = [_ai.get("model", "").strip() or "local-model"]
+    _wh = _initial_cfg.get("whisper", {})
+    WHISPER_MODEL = _wh.get("model", "large-v3-turbo")
+    USE_CPU = bool(_wh.get("use_cpu", False))
+else:
+    # Defaults prior to user initial setup
+    AI_PROVIDER = env("CLIPIEST_AI_PROVIDER", "lmstudio").strip().lower()
+    AI_KEY = env("CLIPIEST_AI_KEY", "")
+    AI_MODELS = [m.strip() for m in (env("CLIPIEST_AI_MODELS") or "local-model").split(",") if m.strip()]
+    AI_BASE_URL = (env("CLIPIEST_AI_BASE_URL") or "http://127.0.0.1:1234/v1").rstrip("/")
+    WHISPER_MODEL = env("CLIPIEST_WHISPER_MODEL", "large-v3-turbo")
+    USE_CPU = env("CLIPIEST_CPU", "0") == "1"
 
 # ASR Model Settings
 ASR_ENGINE = env("CLIPIEST_ASR_ENGINE", "faster_whisper")  # faster_whisper | sherpa_onnx
-WHISPER_MODEL = env("CLIPIEST_WHISPER_MODEL", "large-v3-turbo")
-USE_CPU = env("CLIPIEST_CPU", "0") == "1"
 
 # Video Defaults
 OUT_W = 1080

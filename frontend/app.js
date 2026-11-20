@@ -5,6 +5,8 @@ const $ = (id) => document.getElementById(id);
 
 // Application State
 const appState = {
+  configured: false,
+  activeProvider: 'lmstudio',
   currentTab: 'create',
   sourceId: null,
   sourceUrl: '',
@@ -27,6 +29,66 @@ const appState = {
   liveSessionId: null,
   livePollTimer: null,
   currentImageSource: null
+};
+
+// Provider Presets
+const PROVIDER_PRESETS = {
+  lmstudio: {
+    name: 'LM Studio (Local)',
+    url: 'http://127.0.0.1:1234/v1',
+    hint: 'Make sure LM Studio local server is started on port 1234.',
+    keyHint: 'Optional (leave blank for local LM Studio)',
+    defaultModel: 'local-model'
+  },
+  ollama: {
+    name: 'Ollama (Local)',
+    url: 'http://127.0.0.1:11434/v1',
+    hint: 'Make sure Ollama is running on port 11434.',
+    keyHint: 'Optional (leave blank for local Ollama)',
+    defaultModel: 'llama3.2:3b'
+  },
+  gemini: {
+    name: 'Google Gemini',
+    url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    hint: 'Google AI Studio REST endpoint.',
+    keyHint: 'Enter your Gemini API key (starts with AIza...)',
+    defaultModel: 'gemini-2.5-flash'
+  },
+  openai: {
+    name: 'OpenAI',
+    url: 'https://api.openai.com/v1',
+    hint: 'Standard OpenAI API endpoint.',
+    keyHint: 'Enter OpenAI API key (starts with sk-...)',
+    defaultModel: 'gpt-4o-mini'
+  },
+  anthropic: {
+    name: 'Anthropic Claude',
+    url: 'https://api.anthropic.com/v1',
+    hint: 'Anthropic Messages API endpoint.',
+    keyHint: 'Enter Anthropic API key (starts with sk-ant-...)',
+    defaultModel: 'claude-3-5-haiku-20241022'
+  },
+  groq: {
+    name: 'Groq',
+    url: 'https://api.groq.com/openai/v1',
+    hint: 'Ultra-fast Llama & Mixtral inference.',
+    keyHint: 'Enter Groq API key (starts with gsk_...)',
+    defaultModel: 'llama-3.3-70b-versatile'
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    url: 'https://openrouter.ai/api/v1',
+    hint: 'Unified gateway to 100+ open-source and proprietary models.',
+    keyHint: 'Enter OpenRouter API key (starts with sk-or-...)',
+    defaultModel: 'meta-llama/llama-3.2-3b-instruct:free'
+  },
+  custom: {
+    name: 'Custom OpenAI-Compatible API',
+    url: 'http://127.0.0.1:1234/v1',
+    hint: 'Custom OpenAI-compatible server base URL.',
+    keyHint: 'API Key (if required by endpoint)',
+    defaultModel: 'default-model'
+  }
 };
 
 // Canvas references
@@ -65,8 +127,10 @@ async function init() {
   setupNavigation();
   setupCanvasEvents();
   setupControls();
+  setupConfigurationEvents();
   
   await Promise.all([
+    checkInitialConfiguration(),
     loadLayouts(),
     loadCaptionStyles(),
     updateTelemetry(),
@@ -75,6 +139,203 @@ async function init() {
 
   setInterval(updateTelemetry, 5000);
   requestAnimationFrame(renderLoop);
+}
+
+// -------------------------------------------------------------
+// Configuration & Setup Gate
+// -------------------------------------------------------------
+function openConfigModal() {
+  $('setup-gate-modal').hidden = false;
+  $('cfg-status-msg').hidden = true;
+}
+
+function closeConfigModal() {
+  if (!appState.configured) return;
+  $('setup-gate-modal').hidden = true;
+  document.querySelector('.app-layout').classList.remove('app-locked');
+}
+
+async function checkInitialConfiguration() {
+  try {
+    const data = await api('/api/config');
+    appState.configured = !!data.configured;
+    updateSettingsDisplay(data);
+    
+    if (!data.configured) {
+      document.querySelector('.app-layout').classList.add('app-locked');
+      openConfigModal();
+    } else {
+      document.querySelector('.app-layout').classList.remove('app-locked');
+      $('setup-gate-modal').hidden = true;
+    }
+  } catch (e) {
+    console.warn('Config check failed:', e);
+  }
+}
+
+function updateSettingsDisplay(data) {
+  const ai = data.ai || {};
+  const wh = data.whisper || {};
+  appState.activeProvider = ai.provider || 'lmstudio';
+
+  // Update Settings Tab labels
+  if ($('settings-provider-lbl')) $('settings-provider-lbl').textContent = (ai.provider || 'lmstudio').toUpperCase();
+  if ($('settings-url-lbl')) $('settings-url-lbl').textContent = ai.base_url || 'http://127.0.0.1:1234/v1';
+  if ($('settings-model-lbl')) $('settings-model-lbl').textContent = ai.model || 'local-model';
+  if ($('settings-whisper-lbl')) $('settings-whisper-lbl').textContent = wh.model || 'large-v3-turbo';
+  if ($('active-cfg-badge')) {
+    $('active-cfg-badge').textContent = data.configured ? 'Configured & Active' : 'Setup Required';
+    $('active-cfg-badge').style.background = data.configured ? 'var(--green)' : '#ef4444';
+  }
+
+  // Pre-fill inputs in setup modal
+  $('cfg-base-url').value = ai.base_url || PROVIDER_PRESETS[appState.activeProvider]?.url || 'http://127.0.0.1:1234/v1';
+  $('cfg-api-key').value = ai.api_key || '';
+  $('cfg-model').value = ai.model || PROVIDER_PRESETS[appState.activeProvider]?.defaultModel || 'local-model';
+  if (wh.model) $('cfg-whisper-model').value = wh.model;
+
+  // Set active provider card
+  document.querySelectorAll('#providers-selector .provider-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.provider === appState.activeProvider);
+  });
+}
+
+function setupConfigurationEvents() {
+  // Provider card click
+  document.querySelectorAll('#providers-selector .provider-card').forEach(card => {
+    card.onclick = () => {
+      document.querySelectorAll('#providers-selector .provider-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      const p = card.dataset.provider;
+      appState.activeProvider = p;
+      const preset = PROVIDER_PRESETS[p] || PROVIDER_PRESETS.custom;
+      $('cfg-base-url').value = preset.url;
+      $('cfg-url-hint').textContent = preset.hint;
+      $('cfg-key-hint').textContent = preset.keyHint;
+      $('cfg-model').value = preset.defaultModel;
+      $('cfg-models-dropdown').hidden = true;
+    };
+  });
+
+  // Fetch Models button
+  $('cfg-fetch-models-btn').onclick = async () => {
+    const btn = $('cfg-fetch-models-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Querying...';
+    const statusBox = $('cfg-status-msg');
+    statusBox.hidden = false;
+    statusBox.className = 'cfg-status-box loading';
+    statusBox.textContent = `Connecting to ${appState.activeProvider.toUpperCase()} on ${$('cfg-base-url').value} to fetch loaded models...`;
+
+    try {
+      const q = new URLSearchParams({
+        provider: appState.activeProvider,
+        base_url: $('cfg-base-url').value.trim(),
+        api_key: $('cfg-api-key').value.trim()
+      });
+      const res = await api(`/api/llm/models?${q.toString()}`, { method: 'GET' });
+      const models = res.models || [];
+      if (models.length) {
+        statusBox.className = 'cfg-status-box success';
+        statusBox.textContent = `Found ${models.length} model(s) available on server!`;
+        const dd = $('cfg-models-dropdown');
+        dd.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+        dd.hidden = false;
+        $('cfg-model').value = models[0];
+        dd.onchange = () => { $('cfg-model').value = dd.value; };
+      } else {
+        statusBox.className = 'cfg-status-box error';
+        statusBox.textContent = `No models found. Ensure a model is loaded in LM Studio under Local Server.`;
+      }
+    } catch (e) {
+      statusBox.className = 'cfg-status-box error';
+      statusBox.textContent = `Could not fetch models: ${e.message}. For LM Studio, start the Local Server in LM Studio first.`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔄 Fetch Models';
+    }
+  };
+
+  // Test LLM Connection button
+  $('cfg-test-btn').onclick = async () => {
+    const btn = $('cfg-test-btn');
+    btn.disabled = true;
+    const statusBox = $('cfg-status-msg');
+    statusBox.hidden = false;
+    statusBox.className = 'cfg-status-box loading';
+    statusBox.textContent = 'Sending test prompt to LLM...';
+
+    const payload = {
+      provider: appState.activeProvider,
+      base_url: $('cfg-base-url').value.trim(),
+      api_key: $('cfg-api-key').value.trim(),
+      model: $('cfg-model').value.trim()
+    };
+
+    try {
+      const res = await api('/api/llm/test', { method: 'POST', body: JSON.stringify(payload) });
+      if (res.success) {
+        statusBox.className = 'cfg-status-box success';
+        statusBox.textContent = `✓ ${res.message} (Model: ${res.model})`;
+      } else {
+        statusBox.className = 'cfg-status-box error';
+        statusBox.textContent = `Connection failed: ${res.error}. Make sure your LM Studio server is running on ${payload.base_url}`;
+      }
+    } catch (e) {
+      statusBox.className = 'cfg-status-box error';
+      statusBox.textContent = `Connection error: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // Save & Launch button
+  $('cfg-save-btn').onclick = async () => {
+    const btn = $('cfg-save-btn');
+    btn.disabled = true;
+    const statusBox = $('cfg-status-msg');
+    statusBox.hidden = false;
+    statusBox.className = 'cfg-status-box loading';
+    statusBox.textContent = 'Saving configuration...';
+
+    const payload = {
+      configured: true,
+      ai: {
+        provider: appState.activeProvider,
+        base_url: $('cfg-base-url').value.trim(),
+        api_key: $('cfg-api-key').value.trim(),
+        model: $('cfg-model').value.trim() || 'local-model'
+      },
+      whisper: {
+        engine: 'faster_whisper',
+        model: $('cfg-whisper-model').value,
+        use_cpu: false
+      }
+    };
+
+    try {
+      const res = await api('/api/config', { method: 'POST', body: JSON.stringify(payload) });
+      appState.configured = true;
+      updateSettingsDisplay(res.config || payload);
+      statusBox.className = 'cfg-status-box success';
+      statusBox.textContent = '✓ Configuration saved! Studio is now unlocked.';
+      setTimeout(() => {
+        closeConfigModal();
+        statusBox.hidden = true;
+        updateTelemetry();
+      }, 700);
+    } catch (e) {
+      statusBox.className = 'cfg-status-box error';
+      statusBox.textContent = `Save failed: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // Reopen Config buttons
+  $('reopen-llm-btn').onclick = openConfigModal;
+  if ($('tab-cfg-open-modal-btn')) $('tab-cfg-open-modal-btn').onclick = openConfigModal;
+  if ($('settings-reconfigure-btn')) $('settings-reconfigure-btn').onclick = openConfigModal;
 }
 
 // -------------------------------------------------------------

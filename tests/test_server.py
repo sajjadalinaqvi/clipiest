@@ -59,5 +59,52 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.json(), list)
 
+    def test_config_endpoints(self):
+        # 1. GET /api/config
+        res = self.client.get("/api/config")
+        self.assertEqual(res.status_code, 200)
+        cfg = res.json()
+        self.assertIn("whisper_models", cfg)
+        self.assertIn("providers", cfg)
+        self.assertIn("lmstudio", cfg["providers"])
+
+        # 2. POST /api/config
+        update_payload = {
+            "ai": {
+                "provider": "lmstudio",
+                "base_url": "http://127.0.0.1:1234/v1",
+                "api_key": "",
+                "model": "meta-llama-3.1-8b-instruct"
+            },
+            "whisper": {
+                "model": "small"
+            }
+        }
+        res_post = self.client.post("/api/config", json=update_payload)
+        self.assertEqual(res_post.status_code, 200)
+        resp_data = res_post.json()
+        self.assertTrue(resp_data.get("success"))
+        self.assertEqual(resp_data["config"]["ai"]["provider"], "lmstudio")
+        self.assertEqual(resp_data["config"]["whisper"]["model"], "small")
+
+    def test_llm_test_endpoint(self):
+        res = self.client.post("/api/llm/test", json={
+            "provider": "lmstudio",
+            "base_url": "http://127.0.0.1:99999/invalid",
+            "api_key": "",
+            "model": "fake-model"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertFalse(data.get("ok"))
+        self.assertIn("error", data)
+
+    def test_llm_models_endpoint(self):
+        res = self.client.get("/api/llm/models?provider=ollama&base_url=http://127.0.0.1:99999")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["provider"], "ollama")
+        self.assertIsInstance(data["models"], list)
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,10 @@
           <span class="icon">⚙</span>
           <span>Engine &amp; Telemetry</span>
         </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="icon">⚡</span>
+          <span>LLM &amp; Settings</span>
+        </button>
       </nav>
 
       <div class="sidebar-telemetry">
@@ -47,7 +51,7 @@
         </div>
         <div class="telemetry-item">
           <span class="lbl">AI MODEL</span>
-          <span class="val" id="ai-pill">Gemini</span>
+          <span class="val" id="ai-pill">LM Studio</span>
         </div>
         <div class="telemetry-item">
           <span class="lbl">CPU / RAM</span>
@@ -56,6 +60,7 @@
       </div>
 
       <div class="sidebar-footer">
+        <button id="reopen-llm-btn" class="btn-secondary btn-sm" style="width:100%;margin-bottom:8px;">⚙️ Configure LLM</button>
         <button id="open-folder-btn" class="btn-ghost btn-sm">📁 Open Data Folder</button>
         <div class="version-tag">Clipiest v1.0.0 Monorepo</div>
       </div>
@@ -341,7 +346,155 @@
           </div>
         </div>
       </section>
+
+      <!-- TAB 5: LLM & SETTINGS -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h2>AI Language Model &amp; Whisper Settings</h2>
+            <p>Configure LM Studio, Ollama, remote LLM providers, and local speech recognition models.</p>
+          </div>
+          <button id="tab-cfg-open-modal-btn" class="btn-primary">Open Setup Wizard ↗</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h3>Active AI &amp; Speech Configuration</h3>
+            <span id="active-cfg-badge" class="badge">Checking...</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="metric-card">
+              <h3>LLM Provider</h3>
+              <div class="stat-line"><span>Provider:</span> <b id="settings-provider-lbl">--</b></div>
+              <div class="stat-line"><span>Base URL:</span> <b id="settings-url-lbl">--</b></div>
+              <div class="stat-line"><span>Active Model:</span> <b id="settings-model-lbl">--</b></div>
+            </div>
+            <div class="metric-card">
+              <h3>Local Whisper ASR</h3>
+              <div class="stat-line"><span>Engine:</span> <b>faster-whisper (Local)</b></div>
+              <div class="stat-line"><span>Active Model:</span> <b id="settings-whisper-lbl">--</b></div>
+              <div class="stat-line"><span>Hardware:</span> <b id="settings-accel-lbl">CUDA / CPU</b></div>
+            </div>
+            <div class="metric-card">
+              <h3>Configuration Actions</h3>
+              <p class="muted" style="margin-bottom:12px;font-size:12px;">Update base URL, API tokens, switch LM Studio models, or change Whisper accuracy.</p>
+              <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp; Whisper</button>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+
+  <!-- SETUP GATE MODAL (Blocks main app until LLM is configured) -->
+  <div id="setup-gate-modal" class="setup-modal-overlay" hidden>
+    <div class="setup-modal-card">
+      <div class="setup-header">
+        <div class="icon-wrap">⚡</div>
+        <div>
+          <h2>Configure AI Language Model (LLM)</h2>
+          <p>Clipiest requires an LLM to evaluate gaming highlights, detect viral hooks, and score comedic/clutch moments. Set up your local LM Studio, Ollama, or API key to unlock the studio.</p>
+        </div>
+      </div>
+
+      <div class="cfg-form">
+        <div class="cfg-field">
+          <label>Select AI Provider</label>
+          <div class="providers-grid" id="providers-selector">
+            <div class="provider-card active" data-provider="lmstudio">
+              <span class="p-icon">🖥️</span>
+              <b>LM Studio</b>
+              <small>Local (Default)</small>
+            </div>
+            <div class="provider-card" data-provider="ollama">
+              <span class="p-icon">🦙</span>
+              <b>Ollama</b>
+              <small>Local</small>
+            </div>
+            <div class="provider-card" data-provider="gemini">
+              <span class="p-icon">⚡</span>
+              <b>Google Gemini</b>
+              <small>Cloud API</small>
+            </div>
+            <div class="provider-card" data-provider="openai">
+              <span class="p-icon">🤖</span>
+              <b>OpenAI</b>
+              <small>GPT-4o Mini</small>
+            </div>
+            <div class="provider-card" data-provider="anthropic">
+              <span class="p-icon">🧠</span>
+              <b>Claude</b>
+              <small>Anthropic API</small>
+            </div>
+            <div class="provider-card" data-provider="groq">
+              <span class="p-icon">🚀</span>
+              <b>Groq</b>
+              <small>Ultra-fast Llama</small>
+            </div>
+            <div class="provider-card" data-provider="openrouter">
+              <span class="p-icon">🌐</span>
+              <b>OpenRouter</b>
+              <small>Any Model</small>
+            </div>
+            <div class="provider-card" data-provider="custom">
+              <span class="p-icon">⚙️</span>
+              <b>Custom API</b>
+              <small>OpenAI Spec</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="cfg-field">
+          <label>
+            <span>Endpoint Base URL</span>
+            <span class="field-hint" id="cfg-url-hint">LM Studio default: http://127.0.0.1:1234/v1</span>
+          </label>
+          <input type="text" id="cfg-base-url" value="http://127.0.0.1:1234/v1" placeholder="e.g. http://127.0.0.1:1234/v1">
+        </div>
+
+        <div class="cfg-field" id="cfg-api-key-wrap">
+          <label>
+            <span>API Token / Key</span>
+            <span class="field-hint" id="cfg-key-hint">Optional for LM Studio and Ollama</span>
+          </label>
+          <input type="password" id="cfg-api-key" placeholder="Leave empty for local LM Studio / Ollama">
+        </div>
+
+        <div class="cfg-field">
+          <label>
+            <span>Model Name</span>
+            <span class="field-hint">Name of model loaded in LM Studio or cloud API</span>
+          </label>
+          <div class="cfg-input-row">
+            <input type="text" id="cfg-model" value="local-model" placeholder="e.g. qwen2.5-7b-instruct, gpt-4o-mini, etc.">
+            <button type="button" id="cfg-fetch-models-btn" class="btn-secondary" style="white-space:nowrap;">🔄 Fetch Models</button>
+          </div>
+          <select id="cfg-models-dropdown" style="margin-top:6px;" hidden></select>
+        </div>
+
+        <div class="cfg-field">
+          <label>
+            <span>Speech Recognition (Local Whisper)</span>
+            <span class="field-hint">Runs 100% locally via Faster-Whisper. Zero API keys needed.</span>
+          </label>
+          <select id="cfg-whisper-model">
+            <option value="large-v3-turbo" selected>large-v3-turbo (Recommended — Ultra-fast, High Accuracy)</option>
+            <option value="large-v3">large-v3 (Maximum Accuracy, 3GB)</option>
+            <option value="medium">medium (High Accuracy, 1.5GB)</option>
+            <option value="small">small (Good Accuracy, 480MB)</option>
+            <option value="base">base (Fast, Low RAM, 140MB)</option>
+            <option value="tiny">tiny (Fastest, Minimal RAM, 75MB)</option>
+          </select>
+        </div>
+
+        <div id="cfg-status-msg" class="cfg-status-box" hidden></div>
+
+        <div class="cfg-actions">
+          <button type="button" id="cfg-test-btn" class="btn-secondary">⚡ Test LLM Connection</button>
+          <button type="button" id="cfg-save-btn" class="btn-primary btn-glow">Save &amp; Unlock Clipiest 🚀</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
