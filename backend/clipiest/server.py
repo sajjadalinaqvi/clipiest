@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
-    DATA_DIR, ROOT, BACKEND_DIR, TMP_DIR, HOST, PORT, PUBLIC_URL,
+    DATA_DIR, ROOT, BACKEND_DIR, TMP_DIR, DOWNLOADS_DIR, HOST, PORT, PUBLIC_URL,
     HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, WHISPER_MODEL,
     load_user_config, save_user_config, is_configured, WHISPER_MODELS
 )
@@ -439,7 +439,16 @@ def cancel_job(job_id: str):
 def manual_export(body: dict):
     source_id = str(body.get("id", ""))
     url = str(body.get("url", "")).strip()
-    src = get_source_file(source_id)
+    slice_id = str(body.get("slice_id", "")).strip()
+    src = None
+    
+    if slice_id:
+        slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        if slice_p and slice_p.exists():
+            src = slice_p
+
+    if not src:
+        src = get_source_file(source_id)
     
     # If src does not exist locally, check if it's a URL preview or provided URL
     if not src or not src.exists():
@@ -471,6 +480,9 @@ def manual_export(body: dict):
         
     top_h = float(body.get("top", 0.32))
     caption_style = body.get("caption_style", "bounce")
+    hook_style = body.get("hook_style", "banner")
+    caption_y = int(body.get("caption_y", 1450))
+    hook_y = int(body.get("hook_y", 260)) if body.get("hook_y") is not None else None
     hook = str(body.get("hook", ""))
     words = body.get("words", [])
     cam_in = body.get("cam", {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.30})
@@ -488,7 +500,10 @@ def manual_export(body: dict):
             out_dir = DATA_DIR / "exports"
             out_dir.mkdir(parents=True, exist_ok=True)
 
-            if not target_src or not target_src.exists():
+            if slice_id and target_src and target_src.exists():
+                slice_start = 0.0
+                slice_end = min(probe_video(target_src)["duration"], end - start if end > start else 9999)
+            elif not target_src or not target_src.exists():
                 from .pipeline.downloader import download_video_section
                 state[job_id] = {"status": "downloading", "progress": 0.3, "stage": "Downloading requested slice..."}
                 target_src = download_video_section(url, out_dir, f"raw_{clip_id}", start, end)
@@ -523,13 +538,17 @@ def manual_export(body: dict):
                 game_rect=game_rect,
                 words=words,
                 caption_style=caption_style,
-                hook=hook
+                caption_y=caption_y,
+                hook=hook,
+                hook_y=hook_y,
+                hook_style=hook_style
             )
             
             (out_dir / f"{clip_id}.json").write_text(json.dumps({
                 "source": source_id or clip_id,
                 "settings": {
                     "id": source_id,
+                    "slice_id": slice_id,
                     "start": start,
                     "end": end,
                     "layout": layout,
@@ -537,6 +556,9 @@ def manual_export(body: dict):
                     "cam": cam_in,
                     "game": game_in,
                     "caption_style": caption_style,
+                    "hook_style": hook_style,
+                    "caption_y": caption_y,
+                    "hook_y": hook_y,
                     "hook": hook,
                     "words": words,
                     "source_url": url
@@ -548,6 +570,7 @@ def manual_export(body: dict):
                 "status": "done",
                 "clip_id": clip_id,
                 "file": f"{clip_id}.mp4",
+                "download_url": f"/api/download/{clip_id}.mp4",
                 "cover": f"{clip_id}.jpg",
                 "srt": f"{clip_id}.srt",
                 **res
@@ -557,6 +580,325 @@ def manual_export(body: dict):
             
     threading.Thread(target=render_worker, daemon=True).start()
     return {"job_id": job_id, "clip_id": clip_id}
+
+# -------------------------------------------------------------
+# New Studio Workflow: Moment Scouting, Slicing & Storage
+# -------------------------------------------------------------
+@app.post("/api/moments/scout")
+def api_scout_moments(body: dict):
+    """Step 2: Analyzes video using LLM and returns ONLY recommended timestamps and moments metadata."""
+    import numpy as np
+    import shutil
+    from .pipeline.downloader import get_ytdl
+    from .ai.games import detect_game
+    from .ai.brain import find_viral_moments_ai
+    from .audio.transcribe import youtube_words_from_info, transcribe_audio_segment
+    from .audio.highlights import _audio_profile, rank_highlights
+
+    url = str(body.get("url", "")).strip()
+    source_id = str(body.get("id", "")).strip()
+    count = max(1, min(12, int(body.get("count", 4))))
+    min_len = max(5, min(180, float(body.get("min_len", 30))))
+    max_len = max(min_len, min(180, float(body.get("max_len", 60))))
+
+    title, uploader, duration = "", "", 0.0
+    yt_words = None
+    audio_file = None
+    tmp_clean = []
+
+    try:
+        if url:
+            with get_ytdl({"skip_download": True}) as y:
+                info = y.extract_info(url, download=False)
+            title = info.get("title") or "Video"
+            uploader = info.get("uploader") or info.get("channel") or ""
+            duration = float(info.get("duration") or 0)
+            yt_words = youtube_words_from_info(info)
+        else:
+            src = get_source_file(source_id)
+            if not src or not src.exists():
+                raise HTTPException(404, "Source video not found in library.")
+            meta = probe_video(src)
+            duration = meta["duration"]
+            title = src.stem
+            audio_file = src
+
+        game_name, hashtags = detect_game(title, uploader)
+        rms = np.zeros(max(1, int(duration)))
+
+        if not yt_words:
+            if url:
+                audio_dir = DATA_DIR / "tmp" / f"scout_{uuid.uuid4().hex[:8]}"
+                audio_dir.mkdir(parents=True, exist_ok=True)
+                with get_ytdl({"format": "ba/b", "outtmpl": str(audio_dir / "audio.%(ext)s")}) as y:
+                    y.download([url])
+                audio_file = next(f for f in audio_dir.glob("audio.*") if f.suffix not in (".part", ".ytdl"))
+                tmp_clean.append(audio_dir)
+
+            rms, _ = _audio_profile(audio_file)
+            candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False)
+            words = []
+            for c in candidates[:min(6, len(candidates))]:
+                res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
+                for w in res.get("words", []):
+                    words.append({
+                        "start": c["start"] + w["start"],
+                        "end": c["start"] + w["end"],
+                        "text": w["text"]
+                    })
+            yt_words = sorted(words, key=lambda x: x["start"])
+
+        moments = find_viral_moments_ai(
+            words=yt_words or [],
+            db=rms,
+            duration=duration,
+            title=title,
+            uploader=uploader,
+            max_clips=count,
+            min_len=min_len,
+            max_len=max_len,
+            game_name=game_name
+        )
+
+        for p in tmp_clean:
+            shutil.rmtree(p, ignore_errors=True)
+
+        return {
+            "success": True,
+            "title": title,
+            "duration": duration,
+            "count": len(moments),
+            "moments": moments
+        }
+    except Exception as e:
+        for p in tmp_clean:
+            shutil.rmtree(p, ignore_errors=True)
+        raise HTTPException(500, f"Analysis failed: {e}")
+
+@app.get("/hook-styles")
+@app.get("/api/hook-styles")
+def get_hook_styles():
+    from .rendering.captions import HOOK_STYLES
+    return [{"id": k, **v} for k, v in HOOK_STYLES.items()]
+
+@app.get("/api/preview/frame")
+def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_id: str = ""):
+    """Step 3b: Returns a screenshot/frame at the exact requested timestamp."""
+    sec = max(0.0, float(sec))
+    out_dir = DATA_DIR / "tmp" / "frames"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frame_name = f"frame_{uuid.uuid4().hex[:8]}.jpg"
+    out_p = out_dir / frame_name
+
+    # 1. If slice_id is provided, extract directly from the downloaded slice
+    if slice_id:
+        slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        if slice_p and slice_p.exists():
+            cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(slice_p), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
+            subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
+            if out_p.exists():
+                return FileResponse(out_p, media_type="image/jpeg")
+
+    # 2. If id matches a local source video
+    src = get_source_file(id) if id else None
+    if src and src.exists():
+        cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(src), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
+        subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
+        if out_p.exists():
+            return FileResponse(out_p, media_type="image/jpeg")
+
+    # 3. If thumbnail or storyboard frames exist in data folder
+    if id:
+        folder = DATA_DIR / id
+        if folder.exists():
+            candidates = sorted(folder.glob("frame_*.jpg"))
+            if candidates:
+                idx = int(sec % max(1, len(candidates)))
+                cf = candidates[idx]
+                if cf.exists():
+                    return FileResponse(cf, media_type="image/jpeg")
+
+    # 4. Stream extraction via yt-dlp low-res format
+    if url:
+        try:
+            import yt_dlp
+            with yt_dlp.YoutubeDL({'skip_download': True, 'quiet': True}) as y:
+                info = y.extract_info(url, download=False)
+            formats = [f for f in info.get("formats", []) if f.get("vcodec") not in (None, "none") and f.get("url") and f.get("height", 9999) <= 480]
+            st_url = max(formats, key=lambda f: f.get("height", 0))["url"] if formats else info.get("url")
+            cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", st_url, "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
+            subprocess.run(cmd, capture_output=True, timeout=20, creationflags=0x08000000 if os.name == "nt" else 0)
+            if out_p.exists():
+                return FileResponse(out_p, media_type="image/jpeg")
+        except Exception:
+            pass
+
+    # 5. Check any frame_0.jpg fallback in DATA_DIR
+    for fallback in DATA_DIR.rglob("frame_0.jpg"):
+        if fallback.exists():
+            return FileResponse(fallback, media_type="image/jpeg")
+
+    # 6. Fallback clean canvas placeholder
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (960, 540), color=(15, 20, 32))
+    draw = ImageDraw.Draw(img)
+    draw.text((480, 270), f"Preview Frame ({sec:.1f}s)", fill=(200, 200, 220), anchor="mm")
+    img.save(out_p, quality=85)
+    return FileResponse(out_p, media_type="image/jpeg")
+
+@app.post("/api/slice/fetch")
+def api_fetch_slice(body: dict):
+    """Step 3e: Downloads/extracts ONLY the requested 30s-60s slice from the video."""
+    id_str = str(body.get("id", ""))
+    url = str(body.get("url", "")).strip()
+    start = max(0.0, float(body.get("start", 0)))
+    end = float(body.get("end", start + 30.0))
+    quality = int(str(body.get("quality", "720")).replace("p", ""))
+
+    slice_id = f"slice_{uuid.uuid4().hex[:8]}"
+    out_dir = DATA_DIR / "slices"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    src = get_source_file(id_str) if id_str else None
+    if src and src.exists():
+        out_mp4 = out_dir / f"{slice_id}.mp4"
+        cmd = [
+            "ffmpeg", "-y", "-v", "error",
+            "-ss", f"{start:.2f}",
+            "-i", str(src),
+            "-t", f"{end - start:.2f}",
+            "-c:v", "libx264", "-c:a", "aac",
+            "-threads", "2",
+            "-movflags", "+faststart",
+            str(out_mp4)
+        ]
+        subprocess.run(cmd, check=True, timeout=120, creationflags=0x08000000 if os.name == "nt" else 0)
+        return {
+            "success": True,
+            "slice_id": slice_id,
+            "duration": end - start,
+            "file": f"/media/slices/{slice_id}.mp4"
+        }
+    elif url:
+        from .pipeline.downloader import download_video_section
+        sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality)
+        meta = probe_video(sec_file)
+        return {
+            "success": True,
+            "slice_id": slice_id,
+            "duration": meta.get("duration", end - start),
+            "file": f"/media/slices/{sec_file.name}"
+        }
+    raise HTTPException(400, "No source video or URL provided.")
+
+@app.post("/api/slice/captions")
+def api_slice_captions(body: dict):
+    """Step 3f: Transcribes the slice using Faster-Whisper to produce exact word timestamps and hook."""
+    slice_id = str(body.get("slice_id", ""))
+    hook = str(body.get("hook", ""))
+    lang = body.get("lang") or None
+
+    slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
+    if not slice_p or not slice_p.exists():
+        raise HTTPException(404, "Slice video not found.")
+
+    from .audio.transcribe import transcribe_audio_segment
+    res = transcribe_audio_segment(slice_p, 0.0, probe_video(slice_p)["duration"], DATA_DIR / "tmp", language=lang)
+    words = res.get("words", [])
+
+    return {
+        "success": True,
+        "words": words,
+        "hook": hook.upper() if hook else (words[0]["text"].upper() if words else "WATCH THIS")
+    }
+
+@app.get("/api/download/{filename}")
+def api_download_file(filename: str):
+    """Step 4: Direct browser download into user Downloads."""
+    candidates = [
+        DOWNLOADS_DIR / filename,
+        DATA_DIR / "exports" / filename,
+        DATA_DIR / filename
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return FileResponse(
+                c,
+                media_type="video/mp4",
+                filename=filename,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            )
+    raise HTTPException(404, "File not found for download.")
+
+@app.get("/api/storage/files")
+def api_get_storage_files():
+    """Step 5: Lists all files in the data directory with metadata."""
+    import datetime
+    items = []
+    def cat_for(ext):
+        ext = ext.lower()
+        if ext in (".mp4", ".mkv", ".webm", ".avi", ".mov"): return "video"
+        if ext in (".wav", ".m4a", ".mp3", ".aac", ".ogg"): return "audio"
+        if ext in (".srt", ".ass"): return "subtitles"
+        if ext == ".json": return "metadata"
+        if ext in (".jpg", ".jpeg", ".png", ".webp"): return "image"
+        return "other"
+
+    for p in DATA_DIR.rglob("*"):
+        if p.is_file() and not any(part in (".git", "models") for part in p.parts):
+            try:
+                st = p.stat()
+                rel = p.relative_to(DATA_DIR).as_posix()
+                size_mb = round(st.st_size / (1024 * 1024), 2)
+                mtime = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                items.append({
+                    "name": p.name,
+                    "rel_path": rel,
+                    "category": cat_for(p.suffix),
+                    "size_bytes": st.st_size,
+                    "size_formatted": f"{size_mb:.2f} MB" if size_mb >= 0.1 else f"{round(st.st_size / 1024, 1)} KB",
+                    "modified": mtime,
+                    "url": f"/media/{rel}"
+                })
+            except OSError:
+                pass
+    items.sort(key=lambda x: x["modified"], reverse=True)
+    return {"total": len(items), "files": items}
+
+@app.post("/api/storage/delete")
+def api_delete_storage_file(body: dict):
+    """Step 5: Manually deletes specified file(s) from data folder."""
+    rel_path = str(body.get("path", "")).strip()
+    files = body.get("files") or ([rel_path] if rel_path else [])
+    deleted_count = 0
+    for f in files:
+        target = (DATA_DIR / f).resolve()
+        if DATA_DIR in target.parents and target.exists() and target.is_file():
+            try:
+                target.unlink(missing_ok=True)
+                deleted_count += 1
+            except OSError:
+                pass
+    return {"success": True, "deleted": deleted_count}
+
+@app.post("/api/storage/clean-tmp")
+def api_clean_tmp():
+    """Step 5: Safely cleans all temporary files inside data/tmp."""
+    import shutil
+    tmp_path = DATA_DIR / "tmp"
+    count = 0
+    if tmp_path.exists():
+        for p in tmp_path.glob("*"):
+            try:
+                if p.is_file():
+                    p.unlink(missing_ok=True)
+                    count += 1
+                elif p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                    count += 1
+            except Exception:
+                pass
+    return {"success": True, "cleaned": count}
 
 # -------------------------------------------------------------
 # Clip Library & Media Retrieval

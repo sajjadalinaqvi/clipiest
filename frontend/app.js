@@ -52,7 +52,17 @@ const appState = {
   livePollTimer: null,
   currentImageSource: null,
   creators: [],
-  activeCreatorId: null
+  activeCreatorId: null,
+  moments: [],
+  selectedMoment: null,
+  fetchedSliceId: null,
+  fetchedSlicePath: null,
+  sliceWords: [],
+  hookStyle: 'banner',
+  hookY: 260,
+  storageFiles: [],
+  storageCategoryFilter: 'all',
+  storageSearchQuery: ''
 };
 
 // Provider Presets
@@ -151,11 +161,14 @@ async function init() {
   setupNavigation();
   setupCanvasEvents();
   setupControls();
+  setupStudioWorkflow();
+  setupStorageManager();
   setupConfigurationEvents();
   setupCreatorEvents();
   
   await Promise.all([
     checkInitialConfiguration(),
+    checkLLMStatus(),
     loadLayouts(),
     loadCaptionStyles(),
     loadCreators(),
@@ -164,6 +177,7 @@ async function init() {
   ]);
 
   setInterval(updateTelemetry, 5000);
+  setInterval(checkLLMStatus, 10000);
   requestAnimationFrame(renderLoop);
 }
 
@@ -618,10 +632,13 @@ function setupControls() {
 
       // Show success status
       statusEl.className = 'status-message active-success';
-      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Click <strong>⚡ Make Clips (Auto AI)</strong> above to scout viral moments with LLM, or adjust Start/End and Framing below to export a custom cut.`;
+      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Click <strong>⚡ Start Video Analysis</strong> in Step 2 to scout viral moments with LLM.`;
+
+      if ($('start-scout-btn')) $('start-scout-btn').disabled = false;
+      if ($('studio-workflow-badge')) $('studio-workflow-badge').textContent = 'Step 2: Video Loaded · Ready for LLM Analysis';
 
       // Hide canvas placeholder
-      $('canvas-placeholder').hidden = true;
+      if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
 
       // Populate storyboard reel
       if (res.frames && res.frames.length) {
@@ -638,6 +655,7 @@ function setupControls() {
             document.querySelectorAll('.reel-frame-btn').forEach(el => el.classList.remove('active'));
             b.classList.add('active');
             const img = new Image();
+            img.crossOrigin = "anonymous";
             img.src = frameUrl;
             img.onload = () => {
               appState.currentImageSource = img;
@@ -650,9 +668,13 @@ function setupControls() {
       // Load main thumbnail image into canvas immediately
       const thumbUrl = res.thumbnail.startsWith('/media/') ? res.thumbnail : `/media/${res.thumbnail}`;
       const img = new Image();
+      img.crossOrigin = "anonymous";
       img.src = thumbUrl;
       img.onload = () => {
         appState.currentImageSource = img;
+      };
+      img.onerror = () => {
+        updatePreviewFrame(0);
       };
 
     } catch (e) {
@@ -726,11 +748,14 @@ async function handleFileUpload(file) {
 
     $('time-end').value = Math.min(30, data.duration);
     $('source-status-badge').textContent = `${data.w}x${data.h} · ${(data.duration).toFixed(1)}s`;
-    $('import-status').textContent = 'Upload complete!';
-    $('canvas-placeholder').hidden = true;
+    $('import-status').textContent = 'Upload complete! Click Start Video Analysis in Step 2.';
+    if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
+    if ($('start-scout-btn')) $('start-scout-btn').disabled = false;
+    if ($('studio-workflow-badge')) $('studio-workflow-badge').textContent = 'Step 2: Video Loaded · Ready for LLM Analysis';
 
     // Load storyboard frames
     loadStoryboard(data.id);
+    updatePreviewFrame(0);
   } catch (e) {
     $('import-status').textContent = 'Upload error: ' + e.message;
   }
@@ -1031,38 +1056,733 @@ function drawPhonePreview() {
   }
 
   // Safe zones overlay
-  if ($('safe-zones-chk').checked) {
+  if ($('safe-zones-chk') && $('safe-zones-chk').checked) {
     previewCtx.fillStyle = 'rgba(236, 72, 153, 0.2)';
     previewCtx.fillRect(0, 0, pw, 48);          // Top status bar
     previewCtx.fillRect(0, 840, pw, 120);        // Bottom controls & caption
     previewCtx.fillRect(470, 250, 70, 590);      // Right engagement icons
   }
 
-  // Draw Sample Subtitles
-  const hook = $('hook-input').value.trim();
+  // Draw Hook
+  const hook = $('hook-input')?.value.trim();
+  const hookY = $('hook-y-slider') ? Number($('hook-y-slider').value) / 2 : 130;
+  const hookStyle = $('hook-style-select')?.value || 'banner';
   if (hook) {
     previewCtx.save();
-    previewCtx.fillStyle = '#ffcc00';
-    previewCtx.font = 'bold 24px Plus Jakarta Sans';
     previewCtx.textAlign = 'center';
-    previewCtx.fillText(hook, pw / 2, 100);
+    previewCtx.textBaseline = 'middle';
+    previewCtx.font = '800 22px Plus Jakarta Sans, sans-serif';
+    
+    // Measure and background banner
+    const textWidth = previewCtx.measureText(hook.toUpperCase()).width;
+    const padX = 18, padY = 8;
+    const boxX = (pw - textWidth) / 2 - padX;
+    const boxY = hookY - 14 - padY;
+    const boxW = textWidth + padX * 2;
+    const boxH = 28 + padY * 2;
+
+    if (hookStyle === 'punch') {
+      previewCtx.fillStyle = '#dc2626';
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#fef08a';
+    } else if (hookStyle === 'neon') {
+      previewCtx.fillStyle = 'rgba(6, 182, 212, 0.25)';
+      previewCtx.strokeStyle = '#06b6d4';
+      previewCtx.lineWidth = 2;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#ffffff';
+    } else if (hookStyle === 'fire') {
+      previewCtx.fillStyle = '#ea580c';
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#ffffff';
+    } else if (hookStyle === 'comic') {
+      previewCtx.fillStyle = '#facc15';
+      previewCtx.strokeStyle = '#000000';
+      previewCtx.lineWidth = 3;
+      previewCtx.strokeRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#000000';
+    } else if (hookStyle === 'minimal') {
+      previewCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#ffffff';
+    } else {
+      // Default Purple Banner
+      previewCtx.fillStyle = '#7c3aed';
+      previewCtx.fillRect(boxX, boxY, boxW, boxH);
+      previewCtx.fillStyle = '#ffffff';
+    }
+
+    previewCtx.fillText(hook.toUpperCase(), pw / 2, hookY);
     previewCtx.restore();
   }
 
-  const subY = Number($('caption-y-slider').value) / 2;
+  // Draw Sample or Transcribed Subtitles
+  const subY = Number($('caption-y-slider')?.value || 1450) / 2;
+  const sampleWords = appState.sliceWords && appState.sliceWords.length 
+    ? appState.sliceWords.slice(0, 3).map(w => w.text || w.w).join(' ').toUpperCase()
+    : 'CLIPIEST AI MOMENT';
   previewCtx.save();
   previewCtx.textAlign = 'center';
-  previewCtx.font = '900 32px Plus Jakarta Sans';
+  previewCtx.font = '900 28px Plus Jakarta Sans, sans-serif';
   previewCtx.lineWidth = 6;
   previewCtx.strokeStyle = '#000';
-  previewCtx.strokeText('CLIPIEST AI MOMENT', pw / 2, subY);
-  previewCtx.fillStyle = '#fff';
-  previewCtx.fillText('CLIPIEST AI MOMENT', pw / 2, subY);
+  previewCtx.strokeText(sampleWords, pw / 2, subY);
+  previewCtx.fillStyle = appState.captionStyle === 'gta' ? '#ec4899' : (appState.captionStyle === 'hype' ? '#22c55e' : (appState.captionStyle === 'mrbeast' ? '#facc15' : '#ffffff'));
+  previewCtx.fillText(sampleWords, pw / 2, subY);
   previewCtx.restore();
 }
 
 // -------------------------------------------------------------
-// Clip Creation Pipeline
+// Interactive Studio Workflow (Steps 1, 2, 3, 4)
+// -------------------------------------------------------------
+async function checkLLMStatus() {
+  const pill = $('llm-status-pill');
+  const startBtn = $('start-scout-btn');
+  if (!pill) return;
+
+  try {
+    const cfg = await api('/api/config');
+    const ai = cfg.config?.ai || {};
+    const modelName = ai.model || 'qwen/qwen3.5-9b';
+    const baseUrl = ai.base_url || 'http://localhost:1235/v1';
+
+    const testRes = await api('/api/llm/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: ai.provider || 'lmstudio',
+        base_url: baseUrl,
+        api_key: ai.api_key || '',
+        model: modelName
+      })
+    }).catch(() => ({ success: false }));
+
+    if (testRes.success) {
+      pill.className = 'pill-badge pill-connected';
+      pill.textContent = `● LLM Connected (${modelName})`;
+      if (startBtn && (appState.sourceId || appState.sourceUrl)) {
+        startBtn.disabled = false;
+      }
+    } else {
+      pill.className = 'pill-badge pill-disconnected';
+      pill.textContent = '● LLM Disconnected (Configure)';
+    }
+  } catch (e) {
+    pill.className = 'pill-badge pill-disconnected';
+    pill.textContent = '● LLM Offline';
+  }
+}
+
+function setupStudioWorkflow() {
+  // Step 2: Scout Viral Moments
+  if ($('start-scout-btn')) $('start-scout-btn').onclick = startMomentScout;
+  if ($('scout-configure-llm-btn')) $('scout-configure-llm-btn').onclick = openConfigModal;
+
+  // Step 3: Studio & Slice controls
+  if ($('refresh-frame-btn')) {
+    $('refresh-frame-btn').onclick = () => {
+      const start = Number($('time-start')?.value || 0);
+      const end = Number($('time-end')?.value || start + 30);
+      updatePreviewFrame((start + end) / 2);
+    };
+  }
+  if ($('fetch-slice-btn')) $('fetch-slice-btn').onclick = fetchSlice;
+  if ($('generate-captions-btn')) $('generate-captions-btn').onclick = generateCaptionsAndHook;
+
+  // Step 4: Final Clip Render & Download
+  if ($('generate-final-clip-btn')) $('generate-final-clip-btn').onclick = generateFinalClip;
+
+  // Sliders & Style Dropdowns
+  if ($('hook-style-select')) {
+    $('hook-style-select').onchange = (e) => {
+      appState.hookStyle = e.target.value;
+    };
+  }
+  if ($('hook-y-slider')) {
+    $('hook-y-slider').oninput = (e) => {
+      appState.hookY = Number(e.target.value);
+    };
+  }
+}
+
+async function startMomentScout() {
+  const url = $('video-url')?.value.trim() || appState.sourceUrl;
+  const id = appState.sourceId;
+  if (!url && !id) {
+    return alert('Please fetch or upload a video in Step 1 first.');
+  }
+
+  const btn = $('start-scout-btn');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⟳</span> Scouting Viral Timestamps...';
+
+  const progressWrap = $('scout-progress-wrap');
+  const statusText = $('scout-status-text');
+  const progressBar = $('scout-progress-bar');
+  if (progressWrap) progressWrap.hidden = false;
+  if (statusText) statusText.innerHTML = '<span class="spin">⟳</span> Analyzing audio energy peaks, loudness, and transcript with connected LLM...';
+  if (progressBar) progressBar.style.width = '30%';
+
+  try {
+    const payload = {
+      url: url || undefined,
+      id: id || undefined,
+      count: Number($('clip-count')?.value || 4),
+      min_len: Number($('min-len')?.value || 30),
+      max_len: Number($('max-len')?.value || 60)
+    };
+
+    if (progressBar) progressBar.style.width = '65%';
+    const res = await api('/api/moments/scout', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (!res || !res.moments) {
+      throw new Error(res?.detail || 'No moments returned by scout engine');
+    }
+
+    appState.moments = res.moments;
+    if (progressBar) progressBar.style.width = '100%';
+    if (statusText) {
+      statusText.innerHTML = `✅ <strong>LLM Analysis Complete!</strong> Recommended <strong>${res.moments.length} viral moment timestamps</strong>. Select any card below to frame.`;
+    }
+
+    renderMomentsList(res.moments);
+
+    if (res.moments.length > 0) {
+      selectMoment(res.moments[0]);
+    }
+
+    if ($('studio-workflow-badge')) {
+      $('studio-workflow-badge').textContent = 'Step 3: Moment Selected · Set Framing';
+    }
+
+  } catch (e) {
+    if (statusText) statusText.innerHTML = `❌ Analysis Error: ${escapeHtml(e.message)}`;
+    alert('Moment analysis failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+function renderMomentsList(moments) {
+  const container = $('moments-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!moments || !moments.length) {
+    container.innerHTML = `
+      <div class="empty-moments-state">
+        <div class="empty-icon">⚠️</div>
+        <p>No high-confidence moments found for this range. Try adjusting Min/Max length or clip count.</p>
+      </div>
+    `;
+    return;
+  }
+
+  moments.forEach((m, idx) => {
+    const card = document.createElement('div');
+    card.className = `moment-card ${idx === 0 ? 'selected' : ''}`;
+    card.dataset.idx = idx;
+
+    const startSec = Number(m.start || 0);
+    const endSec = Number(m.end || startSec + 30);
+    const durSec = Math.max(1, Math.round(endSec - startSec));
+
+    card.innerHTML = `
+      <div class="moment-header">
+        <span class="moment-score">🔥 ${m.score || 85}/100</span>
+        <span class="moment-time-badge">⏱ ${formatTime(startSec)} - ${formatTime(endSec)} (${durSec}s)</span>
+      </div>
+      <div class="moment-title">${escapeHtml(m.title || `Viral Climax #${idx + 1}`)}</div>
+      ${m.hook ? `<div class="moment-hook">"${escapeHtml(m.hook)}"</div>` : ''}
+      <div class="moment-reason">${escapeHtml(m.reason || 'High transcript energy and audio spike.')}</div>
+      <button type="button" class="btn-secondary btn-xs moment-select-btn">👉 Select This Moment</button>
+    `;
+
+    card.onclick = () => selectMoment(m, card);
+    card.querySelector('.moment-select-btn').onclick = (e) => {
+      e.stopPropagation();
+      selectMoment(m, card);
+    };
+
+    container.appendChild(card);
+  });
+}
+
+function selectMoment(moment, cardEl) {
+  appState.selectedMoment = moment;
+
+  // Update time inputs
+  $('time-start').value = Math.round(moment.start * 10) / 10;
+  $('time-end').value = Math.round(moment.end * 10) / 10;
+  if (moment.hook) {
+    $('hook-input').value = moment.hook;
+  }
+
+  // Update card styles
+  document.querySelectorAll('.moment-card').forEach(c => c.classList.remove('selected'));
+  if (cardEl) {
+    cardEl.classList.add('selected');
+  }
+
+  // Update status badge
+  const startSec = Number(moment.start || 0);
+  const endSec = Number(moment.end || startSec + 30);
+  if ($('selected-moment-badge')) {
+    $('selected-moment-badge').textContent = `Selected: ${formatTime(startSec)} - ${formatTime(endSec)}`;
+  }
+
+  // Fetch frame from video at this exact moment timestamp
+  const midSec = (startSec + endSec) / 2;
+  updatePreviewFrame(midSec);
+}
+
+async function updatePreviewFrame(sec) {
+  const midSec = Math.max(0, Number(sec) || 0);
+  const url = $('video-url')?.value.trim() || appState.sourceUrl;
+  const id = appState.sourceId || '';
+  const sliceId = appState.fetchedSliceId || '';
+
+  const frameUrl = `/api/preview/frame?id=${encodeURIComponent(id)}&url=${encodeURIComponent(url)}&sec=${midSec.toFixed(2)}&slice_id=${encodeURIComponent(sliceId)}&t=${Date.now()}`;
+  
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = frameUrl;
+  img.onload = () => {
+    appState.currentImageSource = img;
+    if ($('canvas-placeholder')) $('canvas-placeholder').hidden = true;
+  };
+}
+
+async function fetchSlice() {
+  const url = $('video-url')?.value.trim() || appState.sourceUrl;
+  const id = appState.sourceId || '';
+  const start = Number($('time-start')?.value || 0);
+  const end = Number($('time-end')?.value || start + 30);
+  const quality = $('video-quality')?.value || '720';
+
+  if (!url && !id) {
+    return alert('Please enter a video URL or upload a file first.');
+  }
+  if (end <= start) {
+    return alert('End time must be greater than start time.');
+  }
+
+  const btn = $('fetch-slice-btn');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⟳</span> Fetching Slice (' + (end - start).toFixed(0) + 's)...';
+
+  const statusEl = $('slice-status-msg');
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.className = 'status-message active-loading';
+    statusEl.innerHTML = `<span class="spin">⟳</span> Downloading ONLY the selected ${formatTime(start)} - ${formatTime(end)} (${(end - start).toFixed(0)}s) range at ${quality}p...`;
+  }
+
+  try {
+    const res = await api('/api/slice/fetch', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: id || undefined,
+        url: url || undefined,
+        start,
+        end,
+        quality
+      })
+    });
+
+    if (!res || !res.slice_id) {
+      throw new Error(res?.detail || 'Failed to fetch slice');
+    }
+
+    appState.fetchedSliceId = res.slice_id;
+    appState.fetchedSlicePath = res.file;
+
+    if (statusEl) {
+      statusEl.className = 'status-message active-success';
+      statusEl.innerHTML = `✅ <strong>Slice Ready!</strong> Fetched ${(res.duration || end - start).toFixed(1)}s slice (ID: <code>${res.slice_id}</code>). You can now customize Hook &amp; Captions below.`;
+    }
+
+    if ($('studio-workflow-badge')) {
+      $('studio-workflow-badge').textContent = 'Step 3: Slice Fetched · Add Captions';
+    }
+
+    // Refresh canvas frame from the newly downloaded slice
+    updatePreviewFrame(0);
+
+  } catch (e) {
+    if (statusEl) {
+      statusEl.className = 'status-message active-error';
+      statusEl.innerHTML = `❌ Failed to fetch slice: ${escapeHtml(e.message)}`;
+    }
+    alert('Slice fetch error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+async function generateCaptionsAndHook() {
+  if (!appState.fetchedSliceId) {
+    return alert('Please click "📥 Get Clip (Fetch Slice Only)" first before generating captions.');
+  }
+
+  const btn = $('generate-captions-btn');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⟳</span> Transcribing Slice Audio...';
+
+  const statusEl = $('captions-status-msg');
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.className = 'status-message active-loading';
+    statusEl.innerHTML = '<span class="spin">⟳</span> Running local Faster-Whisper to extract exact word timings...';
+  }
+
+  try {
+    const res = await api('/api/slice/captions', {
+      method: 'POST',
+      body: JSON.stringify({
+        slice_id: appState.fetchedSliceId,
+        hook: $('hook-input')?.value.trim() || undefined,
+        lang: $('caption-lang')?.value || undefined
+      })
+    });
+
+    if (!res || !res.words) {
+      throw new Error(res?.detail || 'Transcription failed');
+    }
+
+    appState.sliceWords = res.words;
+    if (res.hook && !$('hook-input').value) {
+      $('hook-input').value = res.hook;
+    }
+
+    if (statusEl) {
+      statusEl.className = 'status-message active-success';
+      statusEl.innerHTML = `✅ <strong>Captions Generated!</strong> Transcribed ${res.words.length} words. Check the 9:16 phone simulator for live preview, then click <strong>🚀 Generate Clip</strong> below.`;
+    }
+
+    if ($('studio-workflow-badge')) {
+      $('studio-workflow-badge').textContent = 'Step 4: Ready to Render & Download';
+    }
+
+  } catch (e) {
+    if (statusEl) {
+      statusEl.className = 'status-message active-error';
+      statusEl.innerHTML = `❌ Captions Error: ${escapeHtml(e.message)}`;
+    }
+    alert('Transcription error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+async function generateFinalClip() {
+  const url = $('video-url')?.value.trim() || appState.sourceUrl;
+  const id = appState.sourceId;
+  const sliceId = appState.fetchedSliceId;
+
+  if (!url && !id && !sliceId) {
+    return alert('Please fetch or upload a video and select a slice first.');
+  }
+
+  const payload = {
+    id: id || undefined,
+    url: url || undefined,
+    slice_id: sliceId || undefined,
+    start: Number($('time-start')?.value || 0),
+    end: Number($('time-end')?.value || 30),
+    layout: appState.layout,
+    top: appState.topH,
+    caption_style: appState.captionStyle,
+    hook_style: $('hook-style-select')?.value || 'banner',
+    caption_y: Number($('caption-y-slider')?.value || 1450),
+    hook_y: Number($('hook-y-slider')?.value || 260),
+    hook: $('hook-input')?.value.trim() || '',
+    words: appState.sliceWords || [],
+    cam: appState.rect.cam,
+    game: appState.rect.game
+  };
+
+  $('execution-panel').hidden = false;
+  $('job-stage').textContent = 'Rendering 1080x1920 MP4...';
+  $('job-progress-bar').style.width = '20%';
+
+  const btn = $('generate-final-clip-btn');
+  btn.disabled = true;
+
+  try {
+    const res = await api('/export', { method: 'POST', body: JSON.stringify(payload) });
+    pollFinalJob(res.job_id);
+  } catch (e) {
+    alert('Render failed: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+function pollFinalJob(jobId) {
+  if (appState.pollTimer) clearInterval(appState.pollTimer);
+
+  appState.pollTimer = setInterval(async () => {
+    try {
+      const data = await api(`/jobs/${jobId}`);
+      $('job-stage').textContent = data.stage || data.status;
+      $('job-progress-bar').style.width = Math.max(10, (data.progress || 0) * 100) + '%';
+
+      if (data.status === 'done') {
+        clearInterval(appState.pollTimer);
+        appState.pollTimer = null;
+        $('generate-final-clip-btn').disabled = false;
+        $('job-stage').textContent = 'Done! Clip saved to ./Downloads';
+        $('job-progress-bar').style.width = '100%';
+
+        if ($('studio-workflow-badge')) {
+          $('studio-workflow-badge').textContent = '✅ Rendered & Downloaded to ./Downloads';
+        }
+
+        // Trigger automatic browser download into Downloads folder
+        const downloadUrl = data.download_url || `/api/download/${data.clip_id}.mp4`;
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `clipiest-${data.clip_id}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Render card into results grid
+        renderClipCards([{
+          id: data.clip_id,
+          file: data.file,
+          title: $('hook-input')?.value || 'Clipiest Final Clip',
+          start: Number($('time-start')?.value || 0),
+          end: Number($('time-end')?.value || 30),
+          score: 95,
+          hook: $('hook-input')?.value || ''
+        }], $('results-grid'));
+
+        loadLibrary();
+      } else if (data.status === 'error') {
+        clearInterval(appState.pollTimer);
+        appState.pollTimer = null;
+        $('generate-final-clip-btn').disabled = false;
+        alert('Render failed: ' + data.error);
+      }
+    } catch (_) {}
+  }, 1200);
+}
+
+// -------------------------------------------------------------
+// Step 5: Data & Storage Manager
+// -------------------------------------------------------------
+function setupStorageManager() {
+  // Sub-tabs in Settings
+  const subTabLlm = $('subtab-btn-llm');
+  const subTabStorage = $('subtab-btn-storage');
+  const paneLlm = $('subpane-settings-llm');
+  const paneStorage = $('subpane-settings-storage');
+
+  if (subTabLlm && subTabStorage) {
+    subTabLlm.onclick = () => {
+      subTabLlm.classList.add('active');
+      subTabStorage.classList.remove('active');
+      if (paneLlm) paneLlm.hidden = false;
+      if (paneStorage) paneStorage.hidden = true;
+    };
+
+    subTabStorage.onclick = () => {
+      subTabStorage.classList.add('active');
+      subTabLlm.classList.remove('active');
+      if (paneLlm) paneLlm.hidden = true;
+      if (paneStorage) paneStorage.hidden = false;
+      loadStorageFiles();
+    };
+  }
+
+  // Sidebar storage button
+  const sidebarStorageBtn = $('sidebar-storage-btn');
+  if (sidebarStorageBtn) {
+    sidebarStorageBtn.onclick = () => {
+      switchTab('settings');
+      if (subTabStorage) subTabStorage.click();
+    };
+  }
+
+  // Storage buttons
+  if ($('storage-refresh-btn')) $('storage-refresh-btn').onclick = loadStorageFiles;
+  if ($('storage-clean-tmp-btn')) $('storage-clean-tmp-btn').onclick = cleanTmpFiles;
+
+  // Search input
+  if ($('storage-search-input')) {
+    $('storage-search-input').oninput = (e) => {
+      appState.storageSearchQuery = e.target.value.toLowerCase().trim();
+      renderStorageTable();
+    };
+  }
+
+  // Category filter chips
+  document.querySelectorAll('[data-storage-cat]').forEach(chip => {
+    chip.onclick = () => {
+      document.querySelectorAll('[data-storage-cat]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      appState.storageCategoryFilter = chip.dataset.storageCat;
+      renderStorageTable();
+    };
+  });
+
+  // Media preview modal close
+  if ($('media-preview-close')) $('media-preview-close').onclick = closeMediaModal;
+  if ($('media-preview-close-btn')) $('media-preview-close-btn').onclick = closeMediaModal;
+}
+
+async function loadStorageFiles() {
+  const tbody = $('storage-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="table-empty"><span class="spin">⟳</span> Scanning data directory...</td></tr>';
+
+  try {
+    const data = await api('/api/storage/files');
+    appState.storageFiles = data.files || [];
+
+    // Calculate metrics
+    let totalBytes = 0;
+    let videoCount = 0;
+    let subsCount = 0;
+
+    appState.storageFiles.forEach(f => {
+      totalBytes += f.size_bytes || 0;
+      if (f.category === 'video') videoCount++;
+      if (f.category === 'subtitles' || f.category === 'metadata') subsCount++;
+    });
+
+    const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
+    const totalGb = (totalBytes / (1024 * 1024 * 1024)).toFixed(2);
+    const totalFormatted = totalBytes >= 1024 * 1024 * 1024 ? `${totalGb} GB` : `${totalMb} MB`;
+
+    if ($('storage-total-count')) $('storage-total-count').textContent = appState.storageFiles.length;
+    if ($('storage-total-size')) $('storage-total-size').textContent = `${totalFormatted} disk used`;
+    if ($('storage-video-count')) $('storage-video-count').textContent = videoCount;
+    if ($('storage-subs-count')) $('storage-subs-count').textContent = subsCount;
+
+    renderStorageTable();
+  } catch (e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="table-empty error">Failed to load files: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderStorageTable() {
+  const tbody = $('storage-table-body');
+  if (!tbody) return;
+
+  const catFilter = appState.storageCategoryFilter || 'all';
+  const query = appState.storageSearchQuery || '';
+
+  const filtered = appState.storageFiles.filter(f => {
+    if (catFilter !== 'all' && f.category !== catFilter) return false;
+    if (query && !f.name.toLowerCase().includes(query) && !f.rel_path.toLowerCase().includes(query)) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="table-empty">No matching files found in data folder.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  filtered.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="file-name-cell" title="${escapeHtml(f.name)}">
+        ${escapeHtml(f.name)}
+      </td>
+      <td>
+        <span class="cat-badge cat-${f.category}">${f.category}</span>
+      </td>
+      <td class="file-size-cell">${f.size_formatted}</td>
+      <td class="file-date-cell">${f.modified}</td>
+      <td class="file-path-cell" title="${escapeHtml(f.rel_path)}">${escapeHtml(f.rel_path)}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button type="button" class="btn-secondary btn-xs file-preview-btn">▶ Preview</button>
+        <button type="button" class="btn-ghost btn-xs btn-danger file-delete-btn">🗑️ Delete</button>
+      </td>
+    `;
+
+    tr.querySelector('.file-preview-btn').onclick = () => previewStorageFile(f);
+    tr.querySelector('.file-delete-btn').onclick = () => deleteStorageFile(f.rel_path, f.name);
+
+    tbody.appendChild(tr);
+  });
+}
+
+async function deleteStorageFile(relPath, name) {
+  if (!confirm(`Are you sure you want to permanently delete '${name}'? This cannot be undone.`)) return;
+
+  try {
+    await api('/api/storage/delete', { method: 'POST', body: JSON.stringify({ path: relPath }) });
+    loadStorageFiles();
+  } catch (e) {
+    alert('Delete error: ' + e.message);
+  }
+}
+
+async function cleanTmpFiles() {
+  if (!confirm('Clean all temporary files in data/tmp?')) return;
+  try {
+    const res = await api('/api/storage/clean-tmp', { method: 'POST' });
+    alert(`Cleaned ${res.cleaned} temporary files/folders.`);
+    loadStorageFiles();
+  } catch (e) {
+    alert('Clean temp error: ' + e.message);
+  }
+}
+
+function previewStorageFile(file) {
+  const modal = $('media-preview-modal');
+  const title = $('media-preview-title');
+  const body = $('media-preview-body');
+  const dlBtn = $('media-preview-download-btn');
+  if (!modal || !body) return;
+
+  title.textContent = `Preview: ${file.name}`;
+  dlBtn.href = file.url;
+  dlBtn.download = file.name;
+
+  if (file.category === 'video') {
+    body.innerHTML = `<video src="${file.url}" controls autoplay style="max-width:100%;max-height:60vh;border-radius:8px;"></video>`;
+  } else if (file.category === 'audio') {
+    body.innerHTML = `<div style="padding:40px;text-align:center;"><div style="font-size:48px;margin-bottom:12px;">🎵</div><audio src="${file.url}" controls autoplay style="width:100%;"></audio></div>`;
+  } else if (file.category === 'image') {
+    body.innerHTML = `<img src="${file.url}" style="max-width:100%;max-height:60vh;border-radius:8px;object-fit:contain;">`;
+  } else {
+    body.innerHTML = '<div style="padding:20px;text-align:center;"><span class="spin">⟳</span> Loading file text...</div>';
+    fetch(file.url)
+      .then(r => r.text())
+      .then(text => {
+        body.innerHTML = `<pre style="max-height:55vh;overflow:auto;background:#06080f;padding:16px;border-radius:6px;font-family:var(--font-mono);font-size:12px;color:#cbd5e1;white-space:pre-wrap;word-break:break-all;">${escapeHtml(text.slice(0, 50000))}</pre>`;
+      })
+      .catch(err => {
+        body.innerHTML = `<p class="error">Could not display file: ${escapeHtml(err.message)}</p>`;
+      });
+  }
+
+  modal.hidden = false;
+}
+
+function closeMediaModal() {
+  const modal = $('media-preview-modal');
+  const body = $('media-preview-body');
+  if (modal) modal.hidden = true;
+  if (body) body.innerHTML = '';
+}
+
+// -------------------------------------------------------------
+// Legacy Make & Manual Export Triggers (Fallback)
 // -------------------------------------------------------------
 async function triggerMakeClips() {
   const url = $('video-url').value.trim();

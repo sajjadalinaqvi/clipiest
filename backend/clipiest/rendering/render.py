@@ -39,6 +39,8 @@ def render_clip(
     caption_style: str = "bounce",
     caption_y: int = 1450,
     hook: str = "",
+    hook_y: int = None,
+    hook_style: str = "banner",
 ) -> dict:
     """Renders a vertical 1080x1920 MP4 with burned-in ASS captions and audio normalization."""
     src_path = Path(src_path).resolve()
@@ -65,7 +67,7 @@ def render_clip(
 
     # Compute layout and text coordinates
     coords = text_positions(layout, top, caption_y)
-    hook_y = coords["hook_y"]
+    safe_hook_y = int(hook_y) if hook_y is not None else coords["hook_y"]
     safe_caption_y = coords["caption_y"]
 
     # Short temp work directory to prevent Windows path length > 260 chars
@@ -84,7 +86,7 @@ def render_clip(
         has_subtitles = bool((words and len(words) > 0) or hook.strip())
         if has_subtitles:
             write_subtitles(
-                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=hook_y
+                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=safe_hook_y, hook_style=hook_style
             )
             fc = f"{graph};[base]ass=subs.ass:fontsdir=f[v]"
         else:
@@ -143,6 +145,13 @@ def render_clip(
             shutil.move(str(work / "cover.jpg"), str(out_jpg))
         shutil.copyfile(str(work / "subs.ass"), str(out_dir / f"{name}.ass"))
         shutil.copyfile(str(work / "subs.srt"), str(out_dir / f"{name}.srt"))
+
+        # Automatically copy to project Downloads folder
+        try:
+            from ..config import DOWNLOADS_DIR
+            shutil.copyfile(str(out_mp4), str(DOWNLOADS_DIR / f"{name}.mp4"))
+        except Exception:
+            pass
 
         meta = probe_video(out_mp4)
         return {

@@ -70,8 +70,9 @@
       </div>
 
       <div class="sidebar-footer">
-        <button id="reopen-llm-btn" class="btn-secondary btn-sm" style="width:100%;margin-bottom:8px;">⚙️ Configure LLM</button>
-        <button id="open-folder-btn" class="btn-ghost btn-sm">📁 Open Data Folder</button>
+        <button id="sidebar-storage-btn" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px;">💾 Data &amp; Storage</button>
+        <button id="reopen-llm-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">⚙️ Configure LLM</button>
+        <button id="open-folder-btn" class="btn-ghost btn-sm" style="width:100%;margin-bottom:6px;">📁 Open Data Folder</button>
         <div class="version-tag">Clipiest v1.0.0 Monorepo</div>
       </div>
     </aside>
@@ -82,19 +83,19 @@
       <section id="tab-create" class="tab-pane active">
         <div class="pane-header">
           <div>
-            <h2>Video Discovery &amp; Vertical Framing</h2>
-            <p>Paste a YouTube, Twitch replay or Kick link, or upload local footage. Automatically finds viral peaks with 11 custom layouts.</p>
+            <h2>Studio &amp; Interactive Clip Discovery</h2>
+            <p>Upload video or fetch from YouTube, Twitch, or Kick. Scout viral moments with LLM, customize framing &amp; captions, and render directly to Downloads.</p>
           </div>
           <div class="header-actions">
-            <button id="make-btn" class="btn-primary btn-glow">⚡ Make Clips (Auto AI)</button>
+            <span id="studio-workflow-badge" class="badge">Step 1: Ingest Video</span>
           </div>
         </div>
 
-        <!-- Step 1: Input -->
+        <!-- STEP 1: Source Video & Settings -->
         <div class="panel">
           <div class="panel-title">
             <span class="step-num">01</span>
-            <h3>Source Video</h3>
+            <h3>Source Video &amp; Clip Settings</h3>
           </div>
 
           <!-- Content Creator Workspace Assignment -->
@@ -115,7 +116,7 @@
           <div class="import-grid">
             <div class="url-input-wrap">
               <input type="url" id="video-url" placeholder="Paste YouTube, Twitch replay, or Kick link (e.g. https://www.youtube.com/watch?v=...)">
-              <button id="preview-btn" class="btn-secondary">Get Previews ↗</button>
+              <button id="preview-btn" class="btn-primary">Fetch Video ↗</button>
             </div>
             <div class="upload-zone" id="upload-zone">
               <input type="file" id="file-input" accept="video/mp4,video/mkv,video/webm,video/quicktime" hidden>
@@ -123,30 +124,13 @@
             </div>
           </div>
 
-          <!-- Storyboard Reel -->
-          <div id="storyboard-reel" class="storyboard-reel" hidden>
-            <div class="reel-label">Fast Preview Frames:</div>
-            <div id="reel-frames" class="reel-frames"></div>
-          </div>
-          <div id="import-status" class="status-message" hidden></div>
-        </div>
-
-        <!-- Step 2: Intelligent Layouts & Mode -->
-        <div class="panel">
-          <div class="panel-title">
-            <span class="step-num">02</span>
-            <h3>Intelligent Layout &amp; Detection Mode</h3>
-            <div class="panel-extra">
-              <button id="autocam-btn" class="btn-magic">✦ Auto-Detect Facecam (CV)</button>
-            </div>
-          </div>
-
-          <div class="settings-row">
+          <!-- Video Quality & Clip Generation Settings -->
+          <div class="settings-row" style="margin-top:14px;">
             <div class="field">
-              <label>Mode</label>
-              <select id="mode-select">
-                <option value="fast">⚡ Fast Mode (Audio-first discovery, 2-3 min)</option>
-                <option value="deep">🔬 Deep Mode (Full optical flow + visual inspection)</option>
+              <label>Video Quality</label>
+              <select id="video-quality">
+                <option value="1080">1080p (Full HD)</option>
+                <option value="720" selected>720p (Fast HD - Recommended)</option>
               </select>
             </div>
             <div class="field">
@@ -161,38 +145,75 @@
               <label>Max Length (s)</label>
               <input type="number" id="max-len" min="10" max="180" value="60">
             </div>
-            <div class="field" id="top-h-field">
-              <label>Facecam Height (<span id="top-h-val">32%</span>)</label>
-              <input type="range" id="top-h-slider" min="20" max="50" value="32">
+          </div>
+
+          <!-- Storyboard Reel -->
+          <div id="storyboard-reel" class="storyboard-reel" hidden>
+            <div class="reel-label">Fast Preview Frames:</div>
+            <div id="reel-frames" class="reel-frames"></div>
+          </div>
+          <div id="import-status" class="status-message" hidden></div>
+        </div>
+
+        <!-- STEP 2: LLM Moment Scouting (Timestamps Only) -->
+        <div class="panel">
+          <div class="panel-title">
+            <span class="step-num">02</span>
+            <h3>AI Video Analysis &amp; Viral Moment Scouting</h3>
+          </div>
+
+          <div class="llm-scout-banner" id="llm-scout-banner">
+            <div class="scout-banner-left">
+              <div class="scout-status-row">
+                <span class="scout-lbl">LLM CONNECTION STATUS:</span>
+                <span id="llm-status-pill" class="pill-badge pill-disconnected">● Checking LLM...</span>
+                <button type="button" id="scout-configure-llm-btn" class="btn-ghost btn-xs">⚙️ LLM Settings</button>
+              </div>
+              <p class="scout-desc">
+                When fetch or upload is complete, start the AI analysis. Clipiest will analyze speech density, energy spikes, and narrative hooks using your connected LLM to recommend the most viral moments with exact timestamps (no full video download or rendering needed yet).
+              </p>
+            </div>
+            <div class="scout-banner-right">
+              <button id="start-scout-btn" class="btn-primary btn-glow" disabled>⚡ Start Video Analysis (Find Viral Moments with LLM)</button>
             </div>
           </div>
 
-          <!-- Facecam Preset Chips -->
-          <div class="presets-bar">
-            <span class="presets-lbl">Facecam Placement:</span>
-            <button class="chip" data-preset="tl">↖ Top-Left</button>
-            <button class="chip" data-preset="tr">↗ Top-Right</button>
-            <button class="chip" data-preset="bl">↙ Bottom-Left</button>
-            <button class="chip" data-preset="br">↘ Bottom-Right</button>
-            <button class="chip" data-preset="bc">⬇ Bottom-Center</button>
-            <button class="chip" data-preset="none">None (Full Blur)</button>
+          <div id="scout-progress-wrap" class="scout-progress-wrap" hidden>
+            <div class="scout-progress-header">
+              <span id="scout-status-text" class="scout-status-text"><span class="spin">⟳</span> Analyzing audio transcript and evaluating viral hooks with LLM...</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div id="scout-progress-bar" class="progress-bar progress-animated" style="width: 25%;"></div>
+            </div>
           </div>
-
-          <!-- 11 Layout Cards -->
-          <div class="layouts-grid" id="layouts-grid"></div>
         </div>
 
-        <!-- Step 3: Interactive Dual-Canvas Studio -->
+        <!-- STEP 3: Recommended Moments & Manual Slice Customization -->
         <div class="panel">
           <div class="panel-title">
             <span class="step-num">03</span>
-            <h3>Visual Framing &amp; Crop Canvas</h3>
+            <h3>Recommended Moments &amp; Manual Customization</h3>
             <div class="panel-extra">
-              <span id="source-status-badge" class="badge">No video loaded</span>
+              <span id="selected-moment-badge" class="badge">No moment selected</span>
             </div>
           </div>
 
-          <div class="studio-workspace">
+          <!-- 3a: Recommended Moments List -->
+          <div class="moments-section">
+            <div class="section-subtitle">
+              <span>🌟 Recommended Viral Moments (from LLM):</span>
+              <small class="muted">Click any moment card to set its timestamps and preview frame.</small>
+            </div>
+            <div id="moments-list" class="moments-list">
+              <div class="empty-moments-state">
+                <div class="empty-icon">💡</div>
+                <p>No moments scouted yet. Fetch or upload a video in Step 1, then click <strong>Start Video Analysis</strong> in Step 2 to generate viral timestamps.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3b: Visual Framing Studio & Preview Frame -->
+          <div class="studio-workspace" style="margin-top:20px;">
             <!-- Source Canvas Area -->
             <div class="canvas-panel">
               <div class="canvas-toolbar">
@@ -203,6 +224,7 @@
                 <div class="canvas-time-inputs">
                   <label>Start: <input type="number" id="time-start" value="0" min="0" step="0.5">s</label>
                   <label>End: <input type="number" id="time-end" value="30" min="0.1" step="0.5">s</label>
+                  <button type="button" id="refresh-frame-btn" class="btn-secondary btn-xs" title="Fetch video frame at selected timestamp">🔄 Update Preview Frame</button>
                 </div>
               </div>
 
@@ -210,10 +232,22 @@
                 <canvas id="source-canvas" width="960" height="540"></canvas>
                 <div id="canvas-placeholder" class="canvas-placeholder">
                   <div class="icon">🎥</div>
-                  <p>Source video will appear here.</p>
-                  <small>Drag bounding boxes to frame your facecam and gameplay.</small>
+                  <p>Source video preview will appear here.</p>
+                  <small>Drag and resize Facecam and Gameplay boxes to frame your cut.</small>
                 </div>
                 <video id="source-video" controls preload="metadata" hidden></video>
+              </div>
+
+              <!-- Facecam Placement Preset Cards (11 Catalog Layouts) -->
+              <div class="layouts-section">
+                <div class="layouts-header-row">
+                  <span class="layouts-label">Select Facecam &amp; Framing Placement:</span>
+                  <div class="field-inline" id="top-h-field">
+                    <label>Camera Height (<span id="top-h-val">32%</span>):</label>
+                    <input type="range" id="top-h-slider" min="20" max="50" value="32">
+                  </div>
+                </div>
+                <div class="layouts-grid" id="layouts-grid"></div>
               </div>
             </div>
 
@@ -230,53 +264,95 @@
               </div>
             </div>
           </div>
+
+          <!-- 3c: Get Clip Action (Slice fetch) -->
+          <div class="slice-action-card">
+            <div class="slice-info">
+              <h4>📥 Fetch Specific Video Slice</h4>
+              <p>Clipiest will fetch <strong>only this requested slice</strong> (e.g. 30s) from the video without downloading the entire 2-hour file.</p>
+            </div>
+            <div class="slice-btn-wrap">
+              <button id="fetch-slice-btn" class="btn-primary btn-glow">📥 Get Clip (Fetch Slice Only)</button>
+            </div>
+          </div>
+          <div id="slice-status-msg" class="status-message" hidden></div>
+
+          <!-- 3d: Dynamic Hook & Captions Customizer -->
+          <div class="captions-customizer-box" id="captions-customizer-box">
+            <div class="section-subtitle">
+              <span>✍️ Customize Hook &amp; Captions for this Slice:</span>
+            </div>
+
+            <div class="styles-grid" id="styles-grid"></div>
+
+            <div class="caption-options-row">
+              <div class="field">
+                <label>Hook Style</label>
+                <select id="hook-style-select">
+                  <option value="banner" selected>Purple Banner (Gradient)</option>
+                  <option value="punch">Yellow Punch (Red Border)</option>
+                  <option value="neon">Cyan Neon (Glowing)</option>
+                  <option value="fire">Fire Flame (Red/Orange)</option>
+                  <option value="minimal">Clean Dark (Subtle)</option>
+                  <option value="comic">Comic Pop (High Impact)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Spoken Language</label>
+                <select id="caption-lang">
+                  <option value="">Auto (Devanagari/Hindi → Hinglish)</option>
+                  <option value="hinglish">Hinglish (Hindi in Latin script)</option>
+                  <option value="hi">हिंदी (Devanagari script)</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Subtitles Height (Y)</label>
+                <input type="range" id="caption-y-slider" min="600" max="1750" value="1450">
+              </div>
+              <div class="field">
+                <label>Hook Height (Y)</label>
+                <input type="range" id="hook-y-slider" min="100" max="800" value="260">
+              </div>
+              <div class="field field-grow">
+                <label>Opening Hook Text</label>
+                <input type="text" id="hook-input" placeholder="e.g. 'Wait till the end...' or 'Insane Clutch!'">
+              </div>
+            </div>
+
+            <div class="captions-action-row">
+              <button id="generate-captions-btn" class="btn-secondary btn-glow">✍️ Generate Captions &amp; Hook</button>
+              <span id="captions-hint" class="workspace-hint">Transcribes slice audio using local Faster-Whisper to preview styled subtitles on phone canvas.</span>
+            </div>
+            <div id="captions-status-msg" class="status-message" hidden></div>
+          </div>
         </div>
 
-        <!-- Step 4: Subtitles & Hooks -->
+        <!-- STEP 4: Render Execution & Download -->
         <div class="panel">
           <div class="panel-title">
             <span class="step-num">04</span>
-            <h3>Dynamic Captions &amp; Hooks</h3>
+            <h3>Generate Clip &amp; Download</h3>
           </div>
 
-          <div class="styles-grid" id="styles-grid"></div>
-
-          <div class="caption-options-row">
-            <div class="field">
-              <label>Spoken Language</label>
-              <select id="caption-lang">
-                <option value="">Auto (Devanagari/Hindi → Hinglish)</option>
-                <option value="hinglish">Hinglish (Hindi in Latin script)</option>
-                <option value="hi">हिंदी (Devanagari script)</option>
-                <option value="en">English</option>
-              </select>
+          <div class="final-render-bar">
+            <div class="final-render-info">
+              <h4>Ready to render vertical 9:16 MP4?</h4>
+              <p>Renders full 1080x1920 video with burned-in subtitles, saves a copy directly into your <code>./Downloads</code> folder, and starts browser download.</p>
             </div>
-            <div class="field">
-              <label>Subtitles Height</label>
-              <input type="range" id="caption-y-slider" min="600" max="1750" value="1450">
-            </div>
-            <div class="field field-grow">
-              <label>Opening Hook Text (Optional)</label>
-              <input type="text" id="hook-input" placeholder="e.g. 'Wait till the end...' or 'Insane Clutch!'">
-            </div>
+            <button id="generate-final-clip-btn" class="btn-primary btn-glow btn-lg">🚀 Generate Clip</button>
           </div>
-        </div>
 
-        <!-- Step 5: Render Execution & Results -->
-        <div class="panel" id="execution-panel" hidden>
-          <div class="panel-title">
-            <h3>Render Progress &amp; Discovered Clips</h3>
-            <span id="job-stage" class="badge">Initializing</span>
+          <div class="panel" id="execution-panel" hidden style="margin-top:16px;">
+            <div class="panel-title">
+              <h3>Render Progress &amp; Finished Clip</h3>
+              <span id="job-stage" class="badge">Initializing</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div id="job-progress-bar" class="progress-bar" style="width: 2%;"></div>
+            </div>
+            <div id="results-grid" class="results-grid"></div>
           </div>
-          <div class="progress-bar-wrap">
-            <div id="job-progress-bar" class="progress-bar" style="width: 2%;"></div>
-          </div>
-          <div id="results-grid" class="results-grid"></div>
-        </div>
-
-        <div class="action-footer">
-          <button id="manual-export-btn" class="btn-secondary">✂ Export Current Frame Range</button>
-          <button id="make-btn-bottom" class="btn-primary btn-glow">⚡ Discover &amp; Generate Clips</button>
         </div>
       </section>
 
@@ -377,34 +453,113 @@
       <section id="tab-settings" class="tab-pane">
         <div class="pane-header">
           <div>
-            <h2>AI Language Model &amp; Whisper Settings</h2>
-            <p>Configure LM Studio, Ollama, remote LLM providers, and local speech recognition models.</p>
+            <h2>Settings &amp; Data Management</h2>
+            <p>Configure LM Studio, local Whisper, and manage all files stored in your local data directory.</p>
           </div>
-          <button id="tab-cfg-open-modal-btn" class="btn-primary">Open Setup Wizard ↗</button>
+          <div class="header-actions">
+            <button id="tab-cfg-open-modal-btn" class="btn-primary">Open Setup Wizard ↗</button>
+          </div>
         </div>
 
-        <div class="panel">
-          <div class="panel-title">
-            <h3>Active AI &amp; Speech Configuration</h3>
-            <span id="active-cfg-badge" class="badge">Checking...</span>
+        <!-- Sub Tabs: LLM & Whisper Settings | Data & Storage Manager -->
+        <div class="sub-nav-tabs">
+          <button class="sub-tab-btn active" data-subtab="settings-llm" id="subtab-btn-llm">⚡ AI Model &amp; Whisper Settings</button>
+          <button class="sub-tab-btn" data-subtab="settings-storage" id="subtab-btn-storage">💾 Data &amp; Storage Manager (data/)</button>
+        </div>
+
+        <!-- Sub Pane 1: LLM & Whisper -->
+        <div id="subpane-settings-llm" class="subpane active">
+          <div class="panel">
+            <div class="panel-title">
+              <h3>Active AI &amp; Speech Configuration</h3>
+              <span id="active-cfg-badge" class="badge">Checking...</span>
+            </div>
+            <div class="telemetry-grid">
+              <div class="metric-card">
+                <h3>LLM Provider</h3>
+                <div class="stat-line"><span>Provider:</span> <b id="settings-provider-lbl">--</b></div>
+                <div class="stat-line"><span>Base URL:</span> <b id="settings-url-lbl">--</b></div>
+                <div class="stat-line"><span>Active Model:</span> <b id="settings-model-lbl">--</b></div>
+              </div>
+              <div class="metric-card">
+                <h3>Local Whisper ASR</h3>
+                <div class="stat-line"><span>Engine:</span> <b>faster-whisper (Local)</b></div>
+                <div class="stat-line"><span>Active Model:</span> <b id="settings-whisper-lbl">--</b></div>
+                <div class="stat-line"><span>Hardware:</span> <b id="settings-accel-lbl">CUDA / CPU</b></div>
+              </div>
+              <div class="metric-card">
+                <h3>Configuration Actions</h3>
+                <p class="muted" style="margin-bottom:12px;font-size:12px;">Update base URL, API tokens, switch LM Studio models, or change Whisper accuracy.</p>
+                <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp; Whisper</button>
+              </div>
+            </div>
           </div>
-          <div class="telemetry-grid">
-            <div class="metric-card">
-              <h3>LLM Provider</h3>
-              <div class="stat-line"><span>Provider:</span> <b id="settings-provider-lbl">--</b></div>
-              <div class="stat-line"><span>Base URL:</span> <b id="settings-url-lbl">--</b></div>
-              <div class="stat-line"><span>Active Model:</span> <b id="settings-model-lbl">--</b></div>
+        </div>
+
+        <!-- Sub Pane 2: Data & Storage Manager -->
+        <div id="subpane-settings-storage" class="subpane" hidden>
+          <div class="panel">
+            <div class="panel-title">
+              <h3>Data Folder Storage &amp; File Manager</h3>
+              <div class="panel-extra">
+                <button id="storage-clean-tmp-btn" class="btn-secondary btn-xs">🧹 Clean Temp Files</button>
+                <button id="storage-refresh-btn" class="btn-secondary btn-xs">🔄 Refresh Files</button>
+              </div>
             </div>
-            <div class="metric-card">
-              <h3>Local Whisper ASR</h3>
-              <div class="stat-line"><span>Engine:</span> <b>faster-whisper (Local)</b></div>
-              <div class="stat-line"><span>Active Model:</span> <b id="settings-whisper-lbl">--</b></div>
-              <div class="stat-line"><span>Hardware:</span> <b id="settings-accel-lbl">CUDA / CPU</b></div>
+
+            <!-- Storage Metrics Cards -->
+            <div class="telemetry-grid" style="margin-bottom: 20px;">
+              <div class="metric-card">
+                <span class="lbl">TOTAL FILES</span>
+                <div class="stat-big" id="storage-total-count">0</div>
+                <small class="muted" id="storage-total-size">0 MB total size</small>
+              </div>
+              <div class="metric-card">
+                <span class="lbl">VIDEOS &amp; SLICES</span>
+                <div class="stat-big" id="storage-video-count">0</div>
+                <small class="muted">MP4, MKV, WebM</small>
+              </div>
+              <div class="metric-card">
+                <span class="lbl">SUBTITLES &amp; METADATA</span>
+                <div class="stat-big" id="storage-subs-count">0</div>
+                <small class="muted">SRT, ASS, JSON</small>
+              </div>
             </div>
-            <div class="metric-card">
-              <h3>Configuration Actions</h3>
-              <p class="muted" style="margin-bottom:12px;font-size:12px;">Update base URL, API tokens, switch LM Studio models, or change Whisper accuracy.</p>
-              <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp; Whisper</button>
+
+            <!-- Filter & Search Toolbar -->
+            <div class="storage-toolbar">
+              <div class="storage-filters">
+                <button class="filter-chip active" data-storage-cat="all">All Files</button>
+                <button class="filter-chip" data-storage-cat="video">🎬 Videos</button>
+                <button class="filter-chip" data-storage-cat="audio">🎵 Audio</button>
+                <button class="filter-chip" data-storage-cat="subtitles">💬 Subtitles</button>
+                <button class="filter-chip" data-storage-cat="metadata">📋 Metadata</button>
+                <button class="filter-chip" data-storage-cat="image">🖼️ Images</button>
+              </div>
+              <div class="storage-search">
+                <input type="text" id="storage-search-input" placeholder="Search filename or path...">
+              </div>
+            </div>
+
+            <!-- Files Table -->
+            <div class="storage-table-wrap">
+              <table class="storage-table">
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Category</th>
+                    <th>Size</th>
+                    <th>Modified Date</th>
+                    <th>Relative Location</th>
+                    <th style="text-align:right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="storage-table-body">
+                  <tr>
+                    <td colspan="6" class="table-empty">Loading files from data folder...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -629,6 +784,23 @@
           <button type="button" id="cfg-test-btn" class="btn-secondary">⚡ Test LLM Connection</button>
           <button type="button" id="cfg-save-btn" class="btn-primary btn-glow">Save &amp; Unlock Clipiest 🚀</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEDIA PREVIEW MODAL -->
+  <div id="media-preview-modal" class="modal-overlay" hidden>
+    <div class="modal-card" style="max-width:740px;">
+      <div class="modal-header">
+        <h3 id="media-preview-title">File Preview</h3>
+        <button id="media-preview-close" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body" id="media-preview-body" style="min-height:300px;display:flex;align-items:center;justify-content:center;">
+        <!-- Dynamic viewer -->
+      </div>
+      <div class="modal-footer">
+        <a id="media-preview-download-btn" href="#" download class="btn-secondary">↓ Download File</a>
+        <button id="media-preview-close-btn" class="btn-ghost">Close</button>
       </div>
     </div>
   </div>

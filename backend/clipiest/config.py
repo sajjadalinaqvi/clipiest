@@ -39,6 +39,9 @@ MODELS_DIR.mkdir(parents=True, exist_ok=True)
 TMP_DIR = DATA_DIR / "tmp"
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
+DOWNLOADS_DIR = (ROOT / "Downloads").resolve()
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
 # Server
 HOST = env("CLIPIEST_HOST", "127.0.0.1")
 PORT = int(env("CLIPIEST_PORT", "8780"))

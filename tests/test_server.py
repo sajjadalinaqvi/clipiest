@@ -106,5 +106,48 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(data["provider"], "ollama")
         self.assertIsInstance(data["models"], list)
 
+    def test_hook_styles_endpoint(self):
+        res = self.client.get("/api/hook-styles")
+        self.assertEqual(res.status_code, 200)
+        styles = res.json()
+        self.assertGreaterEqual(len(styles), 6)
+        ids = [s["id"] for s in styles]
+        self.assertIn("banner", ids)
+        self.assertIn("punch", ids)
+        self.assertIn("neon", ids)
+        self.assertIn("fire", ids)
+        self.assertIn("comic", ids)
+        self.assertIn("minimal", ids)
+
+    def test_storage_endpoints(self):
+        from clipiest.config import DATA_DIR
+        test_file = DATA_DIR / "test_dummy.txt"
+        test_file.write_text("dummy test content", encoding="utf-8")
+
+        # 1. GET /api/storage/files
+        res = self.client.get("/api/storage/files")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("files", data)
+        self.assertIn("total", data)
+        file_names = [f["name"] for f in data["files"]]
+        self.assertIn("test_dummy.txt", file_names)
+
+        # 2. POST /api/storage/delete
+        del_res = self.client.post("/api/storage/delete", json={"path": "test_dummy.txt"})
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.json().get("success"))
+        self.assertFalse(test_file.exists())
+
+        # 3. POST /api/storage/clean-tmp
+        clean_res = self.client.post("/api/storage/clean-tmp")
+        self.assertEqual(clean_res.status_code, 200)
+        self.assertTrue(clean_res.json().get("success"))
+
+    def test_preview_frame_fallback(self):
+        res = self.client.get("/api/preview/frame?sec=5.0")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.headers.get("content-type"), "image/jpeg")
+
 if __name__ == "__main__":
     unittest.main()

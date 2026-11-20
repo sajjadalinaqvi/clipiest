@@ -55,6 +55,15 @@ STYLE_DEFINITIONS = {
     }
 }
 
+HOOK_STYLES = {
+    "banner": {"name": "Purple Banner", "primary": "&H00FFFFFF&", "outline": "&H00A845FF&", "bord": 12, "shad": 0, "blur": 1},
+    "punch": {"name": "Yellow Punch", "primary": "&H0000FFFF&", "outline": "&H000000FF&", "bord": 14, "shad": 3, "blur": 1},
+    "neon": {"name": "Cyan Neon", "primary": "&H00FFFFFF&", "outline": "&H00FFFF00&", "bord": 10, "shad": 0, "blur": 4},
+    "fire": {"name": "Fire Flame", "primary": "&H00FFFFFF&", "outline": "&H000055FF&", "bord": 12, "shad": 4, "blur": 1},
+    "minimal": {"name": "Clean Dark", "primary": "&H00FFFFFF&", "outline": "&H00202020&", "bord": 10, "shad": 0, "blur": 0},
+    "comic": {"name": "Comic Pop", "primary": "&H0000F0FF&", "outline": "&H00000000&", "bord": 14, "shad": 6, "blur": 0},
+}
+
 STYLES = STYLE_DEFINITIONS
 
 STYLE_NAMES = tuple(STYLE_DEFINITIONS.keys())
@@ -104,7 +113,16 @@ def hook_lines(hook: str, width: int = 18, max_lines: int = 3) -> list:
     lines = textwrap.wrap(clean, width=width) or [""]
     return lines[:max_lines]
 
-def write_subtitles(words: list, style_key: str, out_dir: Path, name: str, hook: str = "", caption_y: int = 1450, hook_y: int = 260) -> tuple:
+def write_subtitles(
+    words: list,
+    style_key: str,
+    out_dir: Path,
+    name: str,
+    hook: str = "",
+    caption_y: int = 1450,
+    hook_y: int = 260,
+    hook_style: str = "banner"
+) -> tuple:
     """Builds styled ASS and standard SRT files. Returns (ass_filename, srt_filename)."""
     st = STYLE_DEFINITIONS.get(style_key, STYLE_DEFINITIONS["bounce"])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -171,7 +189,8 @@ def write_subtitles(words: list, style_key: str, out_dir: Path, name: str, hook:
         lines = hook_lines(to_roman(hook))
         h_size = 78 if len(lines) == 1 else 70 if len(lines) == 2 else 62
         hook_text = r"\N".join(lines).upper()
-        hook_tag = rf"{{\an8\pos({W // 2},{hook_y})\fs{h_size}\b1\c&H00FFFFFF&\3c&H00A845FF&\bord10\shad0\blur1\fad(150,250)}}"
+        hs = HOOK_STYLES.get(hook_style, HOOK_STYLES["banner"])
+        hook_tag = rf"{{\an8\pos({W // 2},{hook_y})\fs{h_size}\b1\c{hs['primary']}\3c{hs['outline']}\bord{hs['bord']}\shad{hs['shad']}\blur{hs['blur']}\fad(150,250)}}"
         ass.append(f"Dialogue: 2,0:00:00.00,0:00:03.20,Hook,,0,0,0,,{hook_tag}{hook_text}")
 
     ass_name = f"{name}.ass"
