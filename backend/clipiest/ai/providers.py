@@ -25,15 +25,17 @@ def list_supported_providers() -> list[str]:
 
 def _clean_json_text(raw: str) -> str:
     """Strips <think> tags, markdown blocks, and surrounding conversational filler."""
-    text = raw.strip()
+    text = str(raw or "").strip()
     # Strip <think>...</think> reasoning blocks common in LM Studio (DeepSeek-R1, Qwen)
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    # If there's leading/trailing chatter, extract from first { or [ to last } or ]
-    m = re.search(r"(\{|\[).+(\}|\])", text, flags=re.DOTALL)
+    # Extract from markdown code fences if present (```json ... ``` or ``` ... ```)
+    m_code = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+    if m_code:
+        text = m_code.group(1).strip()
+    # Extract from outermost { or [ to matching } or ]
+    m = re.search(r"(\{|\[)[\s\S]*(\}|\])", text)
     if m:
-        text = m.group(0)
+        text = m.group(0).strip()
     return text
 
 def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", model: str = "") -> dict:
@@ -57,6 +59,7 @@ def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", mo
             
         latency = int((time.monotonic() - t0) * 1000)
         return {
+            "ok": True,
             "success": True,
             "latency_ms": latency,
             "provider": provider,
@@ -65,6 +68,7 @@ def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", mo
         }
     except Exception as e:
         return {
+            "ok": False,
             "success": False,
             "provider": provider,
             "error": str(e)

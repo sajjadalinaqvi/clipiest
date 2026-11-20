@@ -3,6 +3,7 @@ Never re-downloads, re-discovers moments, or invokes ASR in this path.
 """
 import json
 import math
+import re
 import time
 import uuid
 import threading
@@ -23,12 +24,19 @@ def find_file(data_dir: Path, name: str) -> Path | None:
                 cand = sub / name
                 if cand.exists():
                     return cand
+                if sub.name == "creators":
+                    for c_dir in sub.iterdir():
+                        if c_dir.is_dir():
+                            for child_dir in (c_dir / "clips", c_dir / "videos"):
+                                cand2 = child_dir / name
+                                if cand2.exists():
+                                    return cand2
     except OSError:
         pass
     return None
 
 def read_clip_record(data_dir: Path, clip_id: str) -> dict:
-    if not isinstance(clip_id, str) or not clip_id.isalnum():
+    if not isinstance(clip_id, str) or not re.match(r"^[\w\-]+$", clip_id):
         raise HTTPException(400, "Invalid clip identifier.")
     p = find_file(data_dir, f"{clip_id}.json")
     if not p or not p.exists():
@@ -192,7 +200,8 @@ def attach_reedit(app, data_dir: Path, state: dict):
                     old_id = item["clip_id"]
                     new_id = uuid.uuid4().hex
                     s = item["settings"]
-                    target_dir = item["src_path"].parent
+                    old_p = find_file(data_dir, f"{old_id}.json")
+                    target_dir = old_p.parent if old_p else item["src_path"].parent
                     
                     res = render_clip(
                         src_path=item["src_path"],
@@ -225,11 +234,18 @@ def attach_reedit(app, data_dir: Path, state: dict):
                     }
                     (target_dir / f"{new_id}.json").write_text(json.dumps(new_record, indent=2), encoding="utf-8")
                     
+                    try:
+                        rel_folder = str(target_dir.relative_to(data_dir)).replace("\\", "/")
+                        prefix = f"/media/{rel_folder}" if rel_folder and rel_folder != "." else "/media"
+                    except ValueError:
+                        prefix = "/media"
+
                     done.append({
-                        "file": new_id,
+                        "file": f"{prefix}/{new_id}.mp4",
+                        "id": new_id,
                         "previous": old_id,
                         "title": s.get("title", "Clip"),
-                        "srt": f"/media/{new_id}.srt"
+                        "srt": f"/text/{new_id}/srt"
                     })
                     state[job_id].update({
                         "clips": list(done),

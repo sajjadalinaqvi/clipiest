@@ -32,6 +32,15 @@ class TestReEdit(unittest.TestCase):
         self.assertIsNotNone(found)
         self.assertEqual(found, test_file)
 
+        # Test creator nested folders
+        c_sub = self.test_dir / "creators" / "streamer" / "clips"
+        c_sub.mkdir(parents=True)
+        c_file = c_sub / "clip_123.json"
+        c_file.write_text("dummy")
+        found_c = find_file(self.test_dir, "clip_123.json")
+        self.assertIsNotNone(found_c)
+        self.assertEqual(found_c, c_file)
+
     def test_get_saved_words_from_record(self):
         record = {
             "settings": {

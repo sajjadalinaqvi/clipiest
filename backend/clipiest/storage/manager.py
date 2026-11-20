@@ -22,9 +22,11 @@ def get_storage_info() -> dict:
         "is_full": free_gb < 3.0
     }
 
-def open_storage_folder():
-    """Opens data directory in operating system's native file explorer."""
-    p = str(DATA_DIR.resolve())
+def open_storage_folder(folder_path=None):
+    """Opens directory in operating system's native file explorer."""
+    target = Path(folder_path) if folder_path else DATA_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    p = str(target.resolve())
     if sys.platform == "win32":
         os.startfile(p)
     elif sys.platform == "darwin":
@@ -37,7 +39,7 @@ def get_disk_info(data_dir=None) -> dict:
 
 def open_folder_in_os(data_dir=None) -> bool:
     try:
-        open_storage_folder()
+        open_storage_folder(data_dir)
         return True
     except Exception:
         return False

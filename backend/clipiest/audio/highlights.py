@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import cv2
 
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
 FPS = 3
 W, H = 160, 90
 CUT_THRESH = 38.0
@@ -14,7 +16,7 @@ def _chunk_video(source, start, length, report_fn):
         "ffmpeg", "-v", "error", "-ss", f"{start}", "-t", f"{length}", "-i", str(source), "-an",
         "-vf", f"fps={FPS},scale={W}:{H}", "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"
     ]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=W * H * 64)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=W * H * 64, creationflags=NO_WINDOW)
     flow, cuts, prev = [], [], None
     try:
         while True:
@@ -62,7 +64,7 @@ def _optical_flow_parallel(source, duration, report_fn):
 
 def _audio_profile(source):
     cmd = ["ffmpeg", "-v", "error", "-i", str(source), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"]
-    raw = subprocess.run(cmd, capture_output=True).stdout
+    raw = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW).stdout
     x = np.frombuffer(raw[:len(raw) // 2 * 2], np.int16).astype(np.float32) / 32768
     n = len(x) // 8000
     if n == 0:

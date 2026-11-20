@@ -101,6 +101,10 @@ def render_graph(name: str, rects: list, top: float = 0.32) -> str:
         crop = ""
         if layer["source"] != "full":
             x, y, w, h = rects[0 if layer["source"] == "cam" else 1]
+            w = max(2, int(w) // 2 * 2)
+            h = max(2, int(h) // 2 * 2)
+            x = max(0, int(x))
+            y = max(0, int(y))
             crop = f"crop={w}:{h}:{x}:{y},"
         lw, lh = layer["w"], layer["h"]
         mask = ""

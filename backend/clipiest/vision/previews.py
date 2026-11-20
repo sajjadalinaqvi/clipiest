@@ -2,11 +2,14 @@
 Extracts 4 frames across the duration before full source video download completes.
 """
 import io
+import os
 import subprocess
 import urllib.request
 from pathlib import Path
 from PIL import Image
 import yt_dlp
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 def extract_early_previews(url: str, job_id: str, data_dir: Path, publish_fn=lambda x: None) -> list:
     folder = data_dir / f"{job_id}-preview"
@@ -69,7 +72,7 @@ def extract_early_previews(url: str, job_id: str, data_dir: Path, publish_fn=lam
             t = duration * frac
             out_p = folder / f"{i}.jpg"
             cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", stream_url, "-frames:v", "1", "-vf", "scale=640:-2", str(out_p)]
-            r = subprocess.run(cmd, capture_output=True, timeout=25)
+            r = subprocess.run(cmd, capture_output=True, timeout=25, creationflags=NO_WINDOW)
             if r.returncode == 0 and out_p.exists():
                 report_ready(out_p, t, "stream")
 
@@ -85,7 +88,7 @@ def extract_storyboard(src_path: Path, duration: float, out_dir: Path) -> list[P
         out_p = out_dir / f"{src_path.stem}_sb_{i}.jpg"
         if not out_p.exists():
             cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(src_path), "-frames:v", "1", "-vf", "scale=640:-2", str(out_p)]
-            subprocess.run(cmd, capture_output=True, timeout=15)
+            subprocess.run(cmd, capture_output=True, timeout=15, creationflags=NO_WINDOW)
         if out_p.exists():
             frames.append(out_p)
     return frames
@@ -96,5 +99,5 @@ def extract_seek_frame(src_path: Path, sec: float, out_dir: Path) -> Path | None
     out_p = out_dir / f"{src_path.stem}_seek_{int(sec * 10)}.jpg"
     if not out_p.exists():
         cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(src_path), "-frames:v", "1", "-vf", "scale=640:-2", str(out_p)]
-        subprocess.run(cmd, capture_output=True, timeout=15)
+        subprocess.run(cmd, capture_output=True, timeout=15, creationflags=NO_WINDOW)
     return out_p if out_p.exists() else None

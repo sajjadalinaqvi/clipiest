@@ -1,7 +1,10 @@
 """Visual action heuristics: optical flow motion, explosion flashes, siren strobes, and cuts."""
+import os
 import subprocess
 import numpy as np
 import cv2
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 W, H, FPS = 160, 90, 6
 
@@ -17,7 +20,7 @@ def analyze_action(path, start: float, duration: float) -> dict:
         "-pix_fmt", "rgb24",
         "-f", "rawvideo", "pipe:1"
     ]
-    raw = subprocess.run(cmd, capture_output=True).stdout
+    raw = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW).stdout
     size = W * H * 3
     n = len(raw) // size
     if n < 4:

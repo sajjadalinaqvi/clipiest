@@ -1,4 +1,5 @@
 """Live session management: Streamlink recording and chat spike trigger for Clipiest."""
+import os
 import re
 import sys
 import time
@@ -11,6 +12,8 @@ from .chat import ChatWatcher
 from ..rendering.render import render_clip, probe_video
 from ..audio.transcribe import transcribe_audio_segment
 from ..ai.brain import evaluate_moment
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 BUCKET_SEC = 10
 BASELINE_BUCKETS = 30  # 5 minutes
@@ -85,7 +88,7 @@ class LiveStreamSession:
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
             "-c:a", "aac", str(out_mp4)
         ]
-        r = subprocess.run(cmd, capture_output=True)
+        r = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW)
         if r.returncode != 0 or not out_mp4.exists():
             return
             
@@ -133,7 +136,7 @@ class LiveStreamSession:
         try:
             self.proc = subprocess.Popen(
                 [sys.executable, "-m", "streamlink", "--loglevel", "warning", "--stdout", self.url, "best"],
-                stdout=open(self.rec_file, "wb"), stderr=subprocess.DEVNULL
+                stdout=open(self.rec_file, "wb"), stderr=subprocess.DEVNULL, creationflags=NO_WINDOW
             )
             deadline = time.time() + 60
             while self.t0 is None:

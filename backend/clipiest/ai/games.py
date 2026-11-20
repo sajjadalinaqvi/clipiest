@@ -45,7 +45,7 @@ PATTERNS = [
     (r"\bhelldivers\b", "helldivers"),
     (r"\bpalworld\b", "palworld"),
     (r"\brocket league\b", "rocket_league"),
-    (r"\braainbow six\b|\br6\b", "r6"),
+    (r"\brainbow six\b|\br6\b", "r6"),
     (r"\bbgmi\b", "bgmi"),
     (r"\bfree fire\b", "freefire"),
     (r"\bdeadlock\b", "deadlock")

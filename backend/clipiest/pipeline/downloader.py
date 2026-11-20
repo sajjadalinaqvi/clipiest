@@ -1,9 +1,12 @@
 """yt-dlp download management and audio cross-correlation for Clipiest."""
+import os
 import subprocess
 from pathlib import Path
 import numpy as np
 import yt_dlp
 from ..config import PAD_SEC
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 def get_ytdl(extra_opts: dict = None):
     opts = {
@@ -26,7 +29,7 @@ def _pcm(path: Path, start: float = None, length: float = None) -> np.ndarray:
     if length is not None:
         cmd += ["-t", f"{length:.2f}"]
     cmd += ["-i", str(path), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"]
-    return np.frombuffer(subprocess.run(cmd, capture_output=True).stdout, dtype=np.int16).astype("float32")
+    return np.frombuffer(subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW).stdout, dtype=np.int16).astype("float32")
 
 def find_exact_section_start(master_audio_path: Path, section_video_path: Path, expected_start: float) -> float:
     """Finds exact starting timestamp of keyframe-padded downloaded video section using FFT audio cross-correlation."""

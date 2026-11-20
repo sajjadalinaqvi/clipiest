@@ -81,16 +81,13 @@ def render_clip(
 
         has_subtitles = bool((words and len(words) > 0) or hook.strip())
         if has_subtitles:
-            ass_file, srt_file = write_subtitles(
-                words or [], caption_style, work, name, hook=hook, caption_y=safe_caption_y, hook_y=hook_y
+            write_subtitles(
+                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=hook_y
             )
-            ass_path_str = f"{name}.ass"
-            fc = f"{graph};[base]ass={ass_path_str}:fontsdir=f[v]"
+            fc = f"{graph};[base]ass=subs.ass:fontsdir=f[v]"
         else:
-            ass_file = f"{name}.ass"
-            srt_file = f"{name}.srt"
-            (work / ass_file).write_text("", encoding="utf-8")
-            (work / srt_file).write_text("", encoding="utf-8")
+            (work / "subs.ass").write_text("", encoding="utf-8")
+            (work / "subs.srt").write_text("", encoding="utf-8")
             fc = f"{graph};[base]null[v]"
 
         base_cmd = [
@@ -119,29 +116,29 @@ def render_clip(
         err = None
         encoder_used = "libx264"
         for enc_name, enc_args in encoders:
-            cmd = base_cmd + enc_args + [f"{name}.mp4"]
+            cmd = base_cmd + enc_args + ["rendered.mp4"]
             r = subprocess.run(cmd, cwd=str(work), capture_output=True, text=True, creationflags=NO_WINDOW)
             if r.returncode == 0:
                 encoder_used = enc_name
                 break
             err = r.stderr
 
-        if not (work / f"{name}.mp4").exists():
+        if not (work / "rendered.mp4").exists():
             raise RuntimeError(f"Rendering failed: {err}")
 
         # Extract crisp thumbnail cover frame
         cover_t = min(1.0, (end - start) / 2)
         subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-ss", f"{cover_t:.2f}", "-i", f"{name}.mp4", "-frames:v", "1", "-q:v", "3", f"{name}.jpg"],
+            ["ffmpeg", "-y", "-v", "error", "-ss", f"{cover_t:.2f}", "-i", "rendered.mp4", "-frames:v", "1", "-q:v", "3", "cover.jpg"],
             cwd=str(work), capture_output=True, creationflags=NO_WINDOW
         )
 
         # Move generated files into destination
-        shutil.move(str(work / f"{name}.mp4"), str(out_mp4))
-        if (work / f"{name}.jpg").exists():
-            shutil.move(str(work / f"{name}.jpg"), str(out_jpg))
-        shutil.copyfile(str(work / ass_file), str(out_dir / ass_file))
-        shutil.copyfile(str(work / srt_file), str(out_dir / srt_file))
+        shutil.move(str(work / "rendered.mp4"), str(out_mp4))
+        if (work / "cover.jpg").exists():
+            shutil.move(str(work / "cover.jpg"), str(out_jpg))
+        shutil.copyfile(str(work / "subs.ass"), str(out_dir / f"{name}.ass"))
+        shutil.copyfile(str(work / "subs.srt"), str(out_dir / f"{name}.srt"))
 
         meta = probe_video(out_mp4)
         return {

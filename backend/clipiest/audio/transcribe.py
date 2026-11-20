@@ -9,6 +9,8 @@ from pathlib import Path
 from ..config import MODELS_DIR, USE_CPU, WHISPER_MODEL
 from ..rendering.translit import to_roman
 
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
 _LOCK = threading.Lock()
 _WHISPER_INSTANCES = {}
 
@@ -44,7 +46,7 @@ def transcribe_audio_segment(
         subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{end - start:.2f}",
              "-i", str(src_path), "-vn", "-ac", "1", "-ar", "16000", str(out_wav)],
-            capture_output=True, check=True, timeout=120
+            capture_output=True, check=True, timeout=120, creationflags=NO_WINDOW
         )
         model = get_whisper()
         lang_arg = "hi" if language == "hinglish" else language

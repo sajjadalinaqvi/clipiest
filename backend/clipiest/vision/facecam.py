@@ -1,9 +1,12 @@
 """Computer-vision facecam detector for Clipiest.
 Combines stationary border edge detection and temporal pixel stillness variance.
 """
+import os
 import subprocess
 from pathlib import Path
 import numpy as np
+
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 W, H = 320, 180
 MAX_FRAMES = 24
@@ -21,7 +24,7 @@ def _duration(path: Path) -> float:
     try:
         proc = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW
         )
         return float((proc.stdout or "").strip() or 0)
     except Exception:
@@ -35,7 +38,7 @@ def _extract_frames(path: Path, count: int = MAX_FRAMES) -> np.ndarray:
             ["ffmpeg", "-v", "error", "-i", str(path),
              "-vf", f"fps={rate:.4f},scale={W}:{H},format=gray",
              "-frames:v", str(count), "-f", "rawvideo", "-"],
-            capture_output=True, timeout=60
+            capture_output=True, timeout=60, creationflags=NO_WINDOW
         )
         raw = proc.stdout or b""
         size = W * H
