@@ -58,6 +58,9 @@ const appState = {
   fetchedSliceId: null,
   fetchedSlicePath: null,
   sliceWords: [],
+  sliceWordsSliceId: null,
+  sliceWordsSourceId: null,
+  sliceWordsUrl: null,
   hookStyle: 'banner',
   hookY: 260,
   storageFiles: [],
@@ -619,6 +622,31 @@ function setupControls() {
       appState.sourceWidth = res.w || 1920;
       appState.sourceHeight = res.h || 1080;
 
+      // Invalidate previous video's slice, captions, and moments!
+      appState.fetchedSliceId = null;
+      appState.fetchedSlicePath = null;
+      appState.sliceWords = [];
+      appState.sliceWordsSliceId = null;
+      appState.sliceWordsSourceId = null;
+      appState.sliceWordsUrl = null;
+      appState.selectedMoment = null;
+      appState.moments = [];
+
+      if ($('captions-status-msg')) {
+        $('captions-status-msg').hidden = true;
+        $('captions-status-msg').innerHTML = '';
+      }
+      if ($('slice-status-msg')) {
+        $('slice-status-msg').hidden = true;
+        $('slice-status-msg').innerHTML = '';
+      }
+      if ($('moments-list')) {
+        $('moments-list').innerHTML = '';
+      }
+      if ($('results-grid')) {
+        $('results-grid').innerHTML = '';
+      }
+
       if (res.cam) {
         appState.rect.cam = res.cam;
       }
@@ -626,9 +654,7 @@ function setupControls() {
       // Update time inputs and hooks
       $('time-start').value = 0;
       $('time-end').value = Math.min(60, Math.round(res.duration || 30));
-      if (res.title && !$('hook-input').value) {
-        $('hook-input').value = res.title.slice(0, 50);
-      }
+      $('hook-input').value = res.title ? res.title.slice(0, 50) : '';
 
       // Update badge
       const durStr = res.duration_formatted || `${Math.round(res.duration)}s`;
@@ -774,10 +800,38 @@ async function handleFileUpload(file) {
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
 
     appState.sourceId = data.id;
+    appState.sourceUrl = null;
     appState.sourceWidth = data.w;
     appState.sourceHeight = data.h;
     appState.duration = data.duration;
 
+    // Invalidate previous video's slice, captions, and moments!
+    appState.fetchedSliceId = null;
+    appState.fetchedSlicePath = null;
+    appState.sliceWords = [];
+    appState.sliceWordsSliceId = null;
+    appState.sliceWordsSourceId = null;
+    appState.sliceWordsUrl = null;
+    appState.selectedMoment = null;
+    appState.moments = [];
+    $('hook-input').value = file.name ? file.name.replace(/\.[^/.]+$/, "").slice(0, 50) : '';
+
+    if ($('captions-status-msg')) {
+      $('captions-status-msg').hidden = true;
+      $('captions-status-msg').innerHTML = '';
+    }
+    if ($('slice-status-msg')) {
+      $('slice-status-msg').hidden = true;
+      $('slice-status-msg').innerHTML = '';
+    }
+    if ($('moments-list')) {
+      $('moments-list').innerHTML = '';
+    }
+    if ($('results-grid')) {
+      $('results-grid').innerHTML = '';
+    }
+
+    $('time-start').value = 0;
     $('time-end').value = Math.min(30, data.duration);
     if ($('source-status-badge')) {
       $('source-status-badge').textContent = `${data.w}x${data.h} · ${(data.duration).toFixed(1)}s`;
@@ -1322,6 +1376,26 @@ function setupStudioWorkflow() {
   });
 
   // Step 3: Studio & Slice controls
+  ['time-start', 'time-end'].forEach(id => {
+    const el = $(id);
+    if (el) {
+      el.addEventListener('change', () => {
+        appState.fetchedSliceId = null;
+        appState.fetchedSlicePath = null;
+        appState.sliceWords = [];
+        appState.sliceWordsSliceId = null;
+        if ($('captions-status-msg')) {
+          $('captions-status-msg').hidden = true;
+          $('captions-status-msg').innerHTML = '';
+        }
+        if ($('slice-status-msg')) {
+          $('slice-status-msg').hidden = true;
+          $('slice-status-msg').innerHTML = '';
+        }
+      });
+    }
+  });
+
   if ($('refresh-frame-btn')) {
     $('refresh-frame-btn').onclick = () => {
       const start = Number($('time-start')?.value || 0);
@@ -1469,6 +1543,20 @@ function renderMomentsList(moments) {
 function selectMoment(moment, cardEl) {
   appState.selectedMoment = moment;
 
+  // Clear any previously fetched slice & captions because a new moment is selected!
+  appState.fetchedSliceId = null;
+  appState.fetchedSlicePath = null;
+  appState.sliceWords = [];
+  appState.sliceWordsSliceId = null;
+  if ($('captions-status-msg')) {
+    $('captions-status-msg').hidden = true;
+    $('captions-status-msg').innerHTML = '';
+  }
+  if ($('slice-status-msg')) {
+    $('slice-status-msg').hidden = true;
+    $('slice-status-msg').innerHTML = '';
+  }
+
   // Update time inputs
   $('time-start').value = Math.round(moment.start * 10) / 10;
   $('time-end').value = Math.round(moment.end * 10) / 10;
@@ -1566,6 +1654,14 @@ async function fetchSlice() {
     appState.fetchedSliceId = res.slice_id;
     appState.fetchedSlicePath = res.file;
 
+    // Invalidate old captions when a new slice is fetched!
+    appState.sliceWords = [];
+    appState.sliceWordsSliceId = null;
+    if ($('captions-status-msg')) {
+      $('captions-status-msg').hidden = true;
+      $('captions-status-msg').innerHTML = '';
+    }
+
     if (statusEl) {
       statusEl.className = 'status-message active-success';
       statusEl.innerHTML = `✅ <strong>Slice Ready!</strong> Fetched ${(res.duration || end - start).toFixed(1)}s slice (ID: <code>${res.slice_id}</code>). You can now customize Hook &amp; Captions below.`;
@@ -1635,6 +1731,9 @@ async function generateCaptionsAndHook() {
     }
 
     appState.sliceWords = res.words;
+    appState.sliceWordsSliceId = appState.fetchedSliceId;
+    appState.sliceWordsSourceId = appState.sourceId;
+    appState.sliceWordsUrl = $('video-url')?.value.trim() || appState.sourceUrl;
     if (res.hook && !$('hook-input').value) {
       $('hook-input').value = res.hook;
     }
@@ -1669,6 +1768,16 @@ async function generateFinalClip() {
     return alert('Please fetch or upload a video and select a slice first.');
   }
 
+  // Verify words strictly belong to THIS exact slice or video source!
+  let wordsToSend = [];
+  if (appState.sliceWords && appState.sliceWords.length > 0) {
+    if (sliceId && appState.sliceWordsSliceId === sliceId) {
+      wordsToSend = appState.sliceWords;
+    } else if (!sliceId && ((id && appState.sliceWordsSourceId === id) || (url && appState.sliceWordsUrl === url))) {
+      wordsToSend = appState.sliceWords;
+    }
+  }
+
   const payload = {
     id: id || undefined,
     url: url || undefined,
@@ -1682,7 +1791,7 @@ async function generateFinalClip() {
     caption_y: Number($('caption-y-slider')?.value || 1450),
     hook_y: Number($('hook-y-slider')?.value || 260),
     hook: $('hook-input')?.value.trim() || '',
-    words: appState.sliceWords || [],
+    words: wordsToSend,
     cam: appState.rect.cam,
     game: appState.rect.game
   };
@@ -1731,6 +1840,12 @@ function pollFinalJob(jobId) {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+
+        // Reset slice and words so next clip starts completely fresh
+        appState.fetchedSliceId = null;
+        appState.fetchedSlicePath = null;
+        appState.sliceWords = [];
+        appState.sliceWordsSliceId = null;
 
         // Render card into results grid
         renderClipCards([{

@@ -5,6 +5,7 @@ import re
 import subprocess
 import threading
 import urllib.request
+import uuid
 from pathlib import Path
 from ..config import MODELS_DIR, USE_CPU, WHISPER_MODEL
 from ..rendering.translit import to_roman
@@ -41,7 +42,7 @@ def transcribe_audio_segment(
 ) -> dict:
     """Transcribes audio slice with word timestamps using Faster-Whisper."""
     report_fn("Transcribing audio segment...")
-    out_wav = data_dir / f"temp_{start:.1f}_{end:.1f}.wav"
+    out_wav = data_dir / f"temp_{src_path.stem}_{uuid.uuid4().hex[:8]}_{start:.1f}_{end:.1f}.wav"
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{end - start:.2f}",

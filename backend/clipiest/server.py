@@ -482,8 +482,21 @@ def manual_export(body: dict):
     
     if slice_id:
         slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
+        slice_meta_p = DATA_DIR / "slices" / f"{slice_id}.json"
         if slice_p and slice_p.exists():
-            src = slice_p
+            if slice_meta_p.exists():
+                try:
+                    sm = json.loads(slice_meta_p.read_text(encoding="utf-8"))
+                    if url and sm.get("url") and sm.get("url") != url:
+                        slice_p = None
+                        slice_id = ""
+                    elif source_id and sm.get("source_id") and sm.get("source_id") != source_id:
+                        slice_p = None
+                        slice_id = ""
+                except Exception:
+                    pass
+            if slice_p:
+                src = slice_p
 
     if not src:
         src = get_source_file(source_id)
@@ -523,6 +536,18 @@ def manual_export(body: dict):
     hook_y = int(body.get("hook_y", 260)) if body.get("hook_y") is not None else None
     hook = str(body.get("hook", ""))
     words = body.get("words", [])
+    if not slice_id and body.get("slice_id"):
+        # Slice was discarded because it belonged to another video URL; discard stale words too!
+        words = []
+
+    if slice_id and not words:
+        words_p = DATA_DIR / "slices" / f"{slice_id}_words.json"
+        if words_p.exists():
+            try:
+                words = json.loads(words_p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
     cam_in = body.get("cam", {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.30})
     game_in = body.get("game", {"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
     
@@ -547,6 +572,23 @@ def manual_export(body: dict):
                 target_src = download_video_section(url, out_dir, f"raw_{clip_id}", start, end)
                 slice_start = 0.0
                 slice_end = min(probe_video(target_src)["duration"], end - start)
+
+            # Auto-transcribe if words are missing or empty so every clip gets fresh, accurate captions!
+            nonlocal words
+            if not words or len(words) == 0:
+                try:
+                    state[job_id] = {"status": "rendering", "progress": 0.45, "stage": "Transcribing clip audio for captions..."}
+                    from .audio.transcribe import transcribe_audio_segment
+                    dur = probe_video(target_src)["duration"]
+                    t_res = transcribe_audio_segment(
+                        target_src,
+                        slice_start,
+                        min(slice_end, dur),
+                        DATA_DIR / "tmp"
+                    )
+                    words = t_res.get("words", [])
+                except Exception as t_err:
+                    words = []
 
             meta = probe_video(target_src)
             vw, vh = meta["w"], meta["h"]
@@ -898,6 +940,17 @@ def api_fetch_slice(body: dict):
     ]
     subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
 
+    try:
+        (out_dir / f"{slice_id}.json").write_text(json.dumps({
+            "slice_id": slice_id,
+            "source_id": id_str,
+            "url": url,
+            "start": start,
+            "end": end
+        }), encoding="utf-8")
+    except Exception:
+        pass
+
     return {
         "success": True,
         "slice_id": slice_id,
@@ -920,6 +973,11 @@ def api_slice_captions(body: dict):
     from .audio.transcribe import transcribe_audio_segment
     res = transcribe_audio_segment(slice_p, 0.0, probe_video(slice_p)["duration"], DATA_DIR / "tmp", language=lang)
     words = res.get("words", [])
+
+    try:
+        (DATA_DIR / "slices" / f"{slice_id}_words.json").write_text(json.dumps(words), encoding="utf-8")
+    except Exception:
+        pass
 
     return {
         "success": True,
