@@ -211,6 +211,7 @@ def get_ai_providers():
 # Job Submission & Pipeline
 # -------------------------------------------------------------
 @app.post("/make")
+@app.post("/api/make")
 @app.post("/api/jobs")
 def create_clipping_job(body: dict):
     url = str(body.get("url", "")).strip()
@@ -234,6 +235,8 @@ def create_clipping_job(body: dict):
     return {"job_id": job_id, "status": "queued"}
 
 @app.get("/jobs/{job_id}")
+@app.get("/status/{job_id}")
+@app.get("/make/{job_id}")
 @app.get("/api/jobs/{job_id}")
 def get_job_status(job_id: str):
     if job_id not in state:
@@ -397,6 +400,7 @@ def get_library():
             
     return sorted(records, key=lambda x: x["created"], reverse=True)
 
+@app.delete("/clip/{clip_id}")
 @app.delete("/api/library/{clip_id}")
 def delete_clip(clip_id: str):
     p = find_clip_file(f"{clip_id}.json")
@@ -445,6 +449,7 @@ def download_caption_text(clip_id: str, kind: str):
 # -------------------------------------------------------------
 # User Feedback & Self-Learning Ridge Regression
 # -------------------------------------------------------------
+@app.post("/feedback")
 @app.post("/api/feedback")
 def submit_feedback(body: dict):
     clip_id = str(body.get("clip_id", ""))
@@ -466,6 +471,7 @@ def submit_feedback(body: dict):
 # -------------------------------------------------------------
 # Live Stream Ingestion & Instant Clipping
 # -------------------------------------------------------------
+@app.post("/live/start")
 @app.post("/api/live/start")
 def start_live_session(body: dict):
     stream_url = str(body.get("url", "")).strip()
@@ -481,6 +487,7 @@ def start_live_session(body: dict):
     
     return {"session_id": session_id, "url": stream_url, "status": "running"}
 
+@app.post("/live/stop")
 @app.post("/api/live/stop")
 def stop_live_session(body: dict):
     session_id = str(body.get("session_id", ""))
@@ -490,6 +497,7 @@ def stop_live_session(body: dict):
     mgr.stop()
     return {"session_id": session_id, "status": "stopped"}
 
+@app.post("/live/clip")
 @app.post("/api/live/clip")
 def instant_live_clip(body: dict):
     session_id = str(body.get("session_id", ""))
@@ -504,6 +512,7 @@ def instant_live_clip(body: dict):
     
     return {"status": "clipped", "path": str(clip_path), "file": clip_path.name}
 
+@app.get("/live/{session_id}")
 @app.get("/api/live/status")
 def live_session_status(session_id: Optional[str] = None):
     if not session_id:

@@ -71,6 +71,7 @@ def get_saved_words(data_dir: Path, clip_id: str, record: dict) -> list:
 def attach_reedit(app, data_dir: Path, state: dict):
     """Mounts re-edit API endpoints on FastAPI app."""
 
+    @app.get("/clips/{clip_id}/edit")
     @app.get("/api/clips/{clip_id}/edit")
     def get_clip_for_edit(clip_id: str):
         record = read_clip_record(data_dir, clip_id)
@@ -89,6 +90,7 @@ def attach_reedit(app, data_dir: Path, state: dict):
             "source_url": settings.get("source_url", "")
         }
 
+    @app.post("/clips/reedit")
     @app.post("/api/clips/reedit")
     def apply_reedit(body: dict):
         anchor = str(body.get("file", ""))

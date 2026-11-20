@@ -43,6 +43,8 @@ def snap_clip_to_sentences(clip: dict, words: list, min_len: float, max_len: flo
     
     pick = good_ends[-1] if good_ends else (all_ends[-1] if all_ends and all_ends[-1] >= min_len else None)
     clip["end"] = round(clip["start"] + (pick + 0.3 if pick else min(limit, max_len)), 2)
+    dur = clip["end"] - clip["start"]
+    words[:] = [w for w in words if w["start"] < dur]
 
 def evaluate_moment(transcript: str, title: str = "", game_name: str = None) -> dict:
     """Evaluates transcript slice using LLM."""

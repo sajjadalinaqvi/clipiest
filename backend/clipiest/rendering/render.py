@@ -39,9 +39,27 @@ def render_clip(
     hook: str = "",
 ) -> dict:
     """Renders a vertical 1080x1920 MP4 with burned-in ASS captions and audio normalization."""
+    src_path = Path(src_path).resolve()
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     out_mp4 = out_dir / f"{name}.mp4"
     out_jpg = out_dir / f"{name}.jpg"
+
+    meta_in = probe_video(src_path)
+    vw, vh = meta_in["w"], meta_in["h"]
+
+    def clamp_rect(r, def_x, def_y, def_w, def_h):
+        if not r or len(r) != 4:
+            r = (def_x, def_y, def_w, def_h)
+        x, y, w, h = r
+        x = max(0, min(vw - 2, int(x)))
+        y = max(0, min(vh - 2, int(y)))
+        w = max(2, min(vw - x, int(w)))
+        h = max(2, min(vh - y, int(h)))
+        return (x, y, w, h)
+
+    cam_rect = clamp_rect(cam_rect, 0, 0, int(vw * 0.25), int(vh * 0.30))
+    game_rect = clamp_rect(game_rect, int(vw * 0.25), 0, int(vw * 0.75), vh)
 
     # Compute layout and text coordinates
     coords = text_positions(layout, top, caption_y)
@@ -57,18 +75,23 @@ def render_clip(
         for ttf in FONTS_DIR.glob("*.ttf"):
             shutil.copyfile(ttf, f_dir / ttf.name)
 
-        # Write subtitles
-        ass_file, srt_file = write_subtitles(
-            words or [], caption_style, work, name, hook=hook, caption_y=safe_caption_y, hook_y=hook_y
-        )
-        
         # Build layout filter
         rects = [cam_rect, game_rect]
         graph = render_graph(layout, rects, top)
-        
-        # Windows-safe path handling for filter_complex
-        ass_path_str = f"{name}.ass"
-        fc = f"{graph};[base]ass={ass_path_str}:fontsdir=f[v]"
+
+        has_subtitles = bool((words and len(words) > 0) or hook.strip())
+        if has_subtitles:
+            ass_file, srt_file = write_subtitles(
+                words or [], caption_style, work, name, hook=hook, caption_y=safe_caption_y, hook_y=hook_y
+            )
+            ass_path_str = f"{name}.ass"
+            fc = f"{graph};[base]ass={ass_path_str}:fontsdir=f[v]"
+        else:
+            ass_file = f"{name}.ass"
+            srt_file = f"{name}.srt"
+            (work / ass_file).write_text("", encoding="utf-8")
+            (work / srt_file).write_text("", encoding="utf-8")
+            fc = f"{graph};[base]null[v]"
 
         base_cmd = [
             "ffmpeg", "-y", "-v", "error",

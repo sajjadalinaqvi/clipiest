@@ -765,11 +765,13 @@ async function loadLibrary() {
           <div class="clip-actions">
             <a href="${clip.file}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
             <a href="${clip.srt}" class="btn-secondary btn-sm">↓ SRT</a>
+            <button class="btn-secondary btn-sm reedit-btn">⚡ Edit</button>
             <button class="btn-danger btn-sm del-btn">🗑</button>
           </div>
         </div>
       `;
 
+      card.querySelector('.reedit-btn').onclick = () => openSavedClip(clip.id);
       card.querySelector('.del-btn').onclick = async () => {
         if (!confirm('Permanently delete this clip?')) return;
         await api(`/api/library/${clip.id}`, { method: 'DELETE' });
@@ -780,6 +782,45 @@ async function loadLibrary() {
       container.appendChild(card);
     });
   } catch (_) {}
+}
+
+async function openSavedClip(clipId) {
+  try {
+    const data = await api(`/api/clips/${clipId}/edit`);
+    const s = data.settings;
+    document.querySelector('[data-tab="create"]').click();
+    appState.sourceId = data.source.id;
+    appState.sourceWidth = data.source.w;
+    appState.sourceHeight = data.source.h;
+    appState.duration = data.source.duration;
+    
+    if (s.cam) appState.rect.cam = s.cam;
+    if (s.game) appState.rect.game = s.game;
+    if (s.layout) {
+      appState.layout = s.layout;
+      document.querySelectorAll('.layout-card').forEach(c => c.classList.toggle('active', c.dataset.layout === s.layout));
+    }
+    if (s.top) {
+      appState.topH = s.top;
+      $('top-h-slider').value = Math.round(s.top * 100);
+      $('top-h-val').textContent = Math.round(s.top * 100) + '%';
+    }
+    if (s.caption_style) {
+      appState.captionStyle = s.caption_style;
+      document.querySelectorAll('.style-card').forEach(c => c.classList.toggle('active', c.dataset.style === s.caption_style));
+    }
+    if (s.hook) $('hook-input').value = s.hook;
+    if (s.start !== undefined) $('time-start').value = s.start;
+    if (s.end !== undefined) $('time-end').value = s.end;
+
+    $('source-status-badge').textContent = `Re-editing: ${clipId}`;
+    $('import-status').hidden = false;
+    $('import-status').textContent = `Loaded clip ${clipId} for non-destructive re-framing.`;
+    
+    loadStoryboard(data.source.id);
+  } catch (e) {
+    alert('Failed to load clip for re-editing: ' + e.message);
+  }
 }
 
 window.addEventListener('DOMContentLoaded', init);
