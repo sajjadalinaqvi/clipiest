@@ -146,7 +146,7 @@ def fetch_models_from_provider(provider: str, base_url: str = "", api_key: str =
     models, _ = fetch_models_with_url(provider, base_url, api_key)
     return models
 
-def ask_llm(prompt: str, schema: dict = None, model: str = None, max_tokens: int = 1024) -> dict | list:
+def ask_llm(prompt: str, schema: dict = None, model: str = None, max_tokens: int = 1024, temperature: float = 0.65, system_prompt: str = None) -> dict | list:
     """Invokes LLM with fallback handling and returns parsed JSON response."""
     cfg = load_user_config()
     ai_cfg = cfg.get("ai", {})
@@ -161,23 +161,23 @@ def ask_llm(prompt: str, schema: dict = None, model: str = None, max_tokens: int
     for m in models:
         try:
             if provider == "gemini":
-                return _call_gemini(m, key, prompt)
+                return _call_gemini(m, key, prompt, temperature=temperature)
             elif provider == "anthropic":
-                return _call_anthropic(m, key, prompt, max_tokens=max_tokens)
+                return _call_anthropic(m, key, prompt, max_tokens=max_tokens, temperature=temperature)
             else:
                 # OpenAI-compatible protocol (LM Studio, Ollama, OpenAI, Groq, OpenRouter, Custom)
-                return _call_openai_compat(base_url, m, key, prompt, max_tokens=max_tokens)
+                return _call_openai_compat(base_url, m, key, prompt, max_tokens=max_tokens, temperature=temperature, system_prompt=system_prompt)
         except Exception as e:
             last_err = e
             continue
 
     raise RuntimeError(f"All AI providers failed: {explain_ai_error(last_err or Exception('connection failed'), provider)}")
 
-def _call_gemini(model: str, key: str, prompt: str):
+def _call_gemini(model: str, key: str, prompt: str, temperature: float = 0.65):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json"}
+        "generationConfig": {"responseMimeType": "application/json", "temperature": temperature}
     }
     with httpx.Client(timeout=45.0) as client:
         r = client.post(url, json=payload)
@@ -185,12 +185,17 @@ def _call_gemini(model: str, key: str, prompt: str):
         raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
         return json.loads(_clean_json_text(raw))
 
-def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_fallback: bool = True, max_tokens: int = 1024):
+def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_fallback: bool = True, max_tokens: int = 1024, temperature: float = 0.65, system_prompt: str = None):
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
+    sys_content = system_prompt or (
+        "You are an elite short-form viral video editor AI specializing in YouTube Shorts, TikTok, and Instagram Reels. "
+        "Your mission is to analyze transcripts, energy spikes, and hooks to discover high-retention, scroll-stopping clips with punchy viral titles. "
+        "Reply strictly with valid JSON. Never output markdown, think tags, explanations or conversational text outside JSON."
+    )
     messages = [
-        {"role": "system", "content": "You are a professional viral short-form video editor AI. Reply ONLY with valid JSON. Never output markdown, explanations or conversational text outside JSON."},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt}
     ]
     # For reasoning models (Qwen, DeepSeek-R1), add closed think tag to bypass long CoT generation
@@ -200,7 +205,9 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
     payload = {
         "model": model or "local-model",
         "messages": messages,
-        "temperature": 0.3,
+        "temperature": temperature,
+        "top_p": 0.9,
+        "presence_penalty": 0.1,
         "max_tokens": max_tokens
     }
     

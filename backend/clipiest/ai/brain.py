@@ -13,49 +13,52 @@ CATEGORIES = {"funny", "fail", "clutch", "rage", "shock", "story", "hype", "othe
 _CTRL = re.compile(r"[\x00-\x1f\x7f]+")
 _LINKS = re.compile(r"(?i)(?:https?://|www\.)\S+|\b[\w-]+\.(?:com|net|org|io|gg|tv|ly|me|co|xyz|app|link|shop)\b\S*|@\w+")
 
-HEAD = """You are a master clip scout for short-form gaming and streaming videos (YouTube Shorts, Reels, TikTok).
-Below is a timestamped transcript of a video. Each line starts with [seconds]. Lines marked (LOUD)
-are where the audio got much louder than usual: shouting, laughing, explosive action, screaming, or hype.
+HEAD = """You are an elite short-form viral video editor for TikTok, YouTube Shorts, and Instagram Reels.
+Your mission is to scout the stream transcript and audio energy spikes below to extract the MOST VIRAL, HIGH-RETENTION moments.
 
-Video Title: {title}
-Channel: {uploader}
+Video Title: "{title}"
+Creator/Channel: "{uploader}"
 {game_rule}
 
-Pick up to {n} moments that would work as standalone viral clips for someone who has never seen the stream:
-funny moments, fails, clutch plays, rage, shock, hot takes, or a short story with a punchy payoff.
+SHORT-FORM VIRAL RETENTION FORMULA:
+1. THE 2-SECOND HOOK: The clip MUST start with an immediate curiosity gap, bold statement, high stakes, funny blunder, or sudden chaotic action. Never start on dead air or greetings.
+2. NARRATIVE MOMENTUM (Setup -> Escalation -> Climax -> Reaction):
+   - Setup (first 3-8s): Hook the viewer so they stop scrolling.
+   - Escalation (8-25s): The struggle, funny confusion, or impending chaos builds.
+   - Climax & Payoff (last 5-15s): The kill, disaster, clutch, punchline, or unbelievable twist.
+3. AUDIO ENERGY & (LOUD) SPIKES: Give heavy priority to timestamps labeled (LOUD)—these mark genuine screams, explosive reactions, hysterical laughter, and clutch gameplay.
+4. STANDALONE ENTERTAINMENT: Must be completely understood and hilarious/exciting for a stranger scrolling their feed with zero prior context.
 """
 
 RULES = """
-Rules:
-- Each clip is {min_len} to {max_len} seconds. Use the [seconds] values for start and end.
-- Start on the setup line, not mid-sentence. End right after the payoff or reaction, on the last word of a complete sentence.
-- Do not pick intros, sponsor reads, "like and subscribe", or dead air.
-- Skip weak moments. Return empty array [] if nothing in this chunk is worth clipping.
-- score: 0-100, how likely a stranger stops scrolling and watches the whole clip.
-- hook: at most 5 words, ALL CAPS, displayed on the first 3s of the clip.
-- title: at most 70 characters, punchy and engaging.
-- description: 1-2 sentences summarizing the punchline or play.
-- hashtags: 5 hashtags without the # symbol.
-- highlight_words: 3 to 6 single punchy words spoken during the climax.
-- category: one of funny, fail, clutch, rage, shock, story, hype, other.
-- reason: one short sentence explaining why this clip goes viral.
+Requirements:
+- Recommend up to {n} distinct viral clips.
+- Each clip must be between {min_len}s and {max_len}s long. Use exact seconds from the transcript brackets [seconds].
+- "start": Timestamp of the setup line (start of speech, not dead air).
+- "end": Timestamp right after the punchline or reaction (end of sentence).
+- "hook": 3-5 uppercase words that grab immediate attention on screen (e.g. "BRO REGRETTED THIS IMMEDIATELY", "HE THOUGHT HE WAS SAFE", "LUCKIEST SHOT OF ALL TIME", "HIS REACTION IS UNREAL", "WAIT FOR THE KARMA").
+- "title": Punchy, viral title under 70 characters.
+- "score": 80-99 viral retention rating based on comedy, hype, or shock factor.
+- "category": one of funny, fail, clutch, rage, shock, story, hype.
+- "reason": Why a stranger on TikTok/Shorts will watch this clip to the very end.
 
-Reply ONLY with a valid JSON array of objects following this structure:
+Strictly format response as JSON array of objects:
 [
   {{
-    "start": 124.5,
-    "end": 165.2,
-    "score": 88,
-    "hook": "NO WAY HE DID THIS",
+    "start": float,
+    "end": float,
+    "score": 95,
+    "hook": "HE THOUGHT HE WAS SAFE",
     "title": "Insane Police Chase Escape",
     "description": "Streamer somehow dodges a 5-star wanted level in the final seconds.",
     "category": "clutch",
     "hashtags": ["gaming", "gta", "clutch", "viral", "escape"],
     "highlight_words": ["cops", "run", "omg", "escaped"],
-    "reason": "Intense build-up followed by an unbelievable getaway payoff."
+    "reason": "Intense build-up followed by an unbelievable getaway payoff with loud celebration."
   }}
 ]
 
+Timestamped Transcript:
 <transcript>
 {transcript}
 </transcript>
@@ -127,6 +130,37 @@ def format_transcript_lines(lines: list, limit_chars: int = 12000) -> str:
         if total_len >= limit_chars:
             break
     return "\n".join(out)
+
+def extract_high_energy_transcript(chunk: list, limit_chars: int = 5000) -> str:
+    """Intelligently clusters transcript lines around loudness peaks, reaction words,
+    and questions/exclamations to give the LLM full, coherent viral scenes (setup -> climax -> reaction)."""
+    if not chunk:
+        return ""
+    if len(chunk) <= 45:
+        return format_transcript_lines(chunk, limit_chars=limit_chars)
+    
+    # 1. Identify climaxes and explosive moments
+    climax_indices = []
+    hot_words = {"kill", "dead", "omg", "god", "bro", "clutch", "run", "no way", "what", "how", "wait", "look", "insane", "hacker", "aimbot", "shot", "fail", "win", "lost", "die"}
+    for idx, l in enumerate(chunk):
+        txt_l = l["text"].lower()
+        is_hot = l.get("loud") or "!" in txt_l or "?" in txt_l or any(hw in txt_l for hw in hot_words)
+        if is_hot:
+            climax_indices.append(idx)
+            
+    if not climax_indices:
+        return format_transcript_lines(chunk[:50], limit_chars=limit_chars)
+        
+    # 2. Build 30-50s context bubbles around the climaxes (setup 4 lines before, reaction 6 lines after)
+    selected_indices = set()
+    for ci in climax_indices:
+        for offset in range(-4, 7):
+            target = ci + offset
+            if 0 <= target < len(chunk):
+                selected_indices.add(target)
+                
+    clustered_lines = [chunk[i] for i in sorted(selected_indices)]
+    return format_transcript_lines(clustered_lines, limit_chars=limit_chars)
 
 def _clean_text(v, limit=200):
     return _CTRL.sub(" ", str(v or "")).replace("<", "‹").strip()[:limit]
@@ -231,31 +265,34 @@ def find_viral_moments_ai(
     
     if not lines:
         log("No speech transcript available. Prompting LLM for narrative moments from video title & game...")
-        narrative_prompt = f"""You are a viral YouTube Shorts / TikTok editor.
-Analyze this video:
-Title: "{_clean_text(title, 100) or 'Video'}"
+        narrative_prompt = f"""You are a master viral video editor for YouTube Shorts, TikTok, and Instagram Reels.
+Analyze this video to scout {max_clips} viral, high-retention moments with killer hooks:
+Video Title: "{_clean_text(title, 100) or 'Video'}"
 Channel/Creator: "{_clean_text(uploader, 50) or 'Creator'}"
 Game/Topic: "{game_name or 'Gaming/Entertainment'}"
-Duration: {int(duration)} seconds.
+Total Duration: {int(duration)} seconds.
 
-Recommend {max_clips} viral clip moments across the video duration (each between {int(min_len)}s and {int(max_len)}s).
-For each moment, give a high-converting uppercase hook (max 4-5 words), clip title, category (action/funny/clutch/reaction/fail), and viral reason.
+Identify {max_clips} distinct viral moments distributed across the video:
+- Space clips across different phases (e.g. early curiosity hook at 10-20%, midpoint tension at 40-55%, peak climax at 70-85%, shocking finale at 90-95%).
+- Each clip MUST be {int(min_len)} to {int(max_len)} seconds long (e.g. start: 120.0, end: 165.0).
+- Provide high-curiosity viral hooks (ALL CAPS, 3-5 words) tailored specifically to the title "{_clean_text(title, 60)}".
+- Assign realistic start and end timestamps within 0.0 to {duration:.1f} seconds.
 
 Format strictly as a JSON array of objects:
 [
   {{
     "start": float,
     "end": float,
-    "score": 85,
+    "score": 92,
     "category": "action",
-    "hook": "WAIT FOR THIS",
-    "title": "Clip Title",
-    "description": "Short explanation",
-    "reason": "Why it's viral"
+    "hook": "HE DID NOT EXPECT THIS",
+    "title": "Epic Gameplay Climax",
+    "description": "High-stakes confrontation with a dramatic outcome.",
+    "reason": "Instant visual hook with an explosive payoff."
   }}
 ]"""
         try:
-            raw_res = ask_llm(narrative_prompt)
+            raw_res = ask_llm(narrative_prompt, max_tokens=1024, temperature=0.7)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
@@ -321,16 +358,16 @@ Format strictly as a JSON array of objects:
 
     for win in selected_windows:
         a, b, chunk = win["a"], win["b"], win["chunk"]
-        # Limit transcript chunk to most energetic 4,000 characters
-        fmt_chunk = format_transcript_lines(chunk[:min(len(chunk), 60)], limit_chars=4000)
+        # Intelligently cluster around climaxes, screams, and reaction lines (up to 5,000 characters)
+        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=5000)
         prompt = (
             HEAD.format(title=_clean_text(title, 80) or "Video", uploader=_clean_text(uploader, 50) or "Channel", n=max_clips, game_rule=game_rule)
-            + RULES.format(min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
+            + RULES.format(n=max_clips, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
         )
         
         try:
             log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt, max_tokens=1024)
+            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.65)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:

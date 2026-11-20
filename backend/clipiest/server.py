@@ -783,7 +783,10 @@ def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_i
     if slice_id:
         slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
         if slice_p and slice_p.exists():
-            cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(slice_p), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
+            meta = probe_video(slice_p)
+            dur = max(0.5, float(meta.get("duration", 30.0)))
+            target_t = sec if 0.0 <= sec <= dur else (sec % dur)
+            cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{target_t:.2f}", "-i", str(slice_p), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "2", str(out_p)]
             subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
             if out_p.exists():
                 return FileResponse(out_p, media_type="image/jpeg")
@@ -791,12 +794,28 @@ def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_i
     # 2. If id matches a local source video
     src = get_source_file(id) if id else None
     if src and src.exists():
-        cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(src), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
+        cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", str(src), "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "2", str(out_p)]
         subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
         if out_p.exists():
             return FileResponse(out_p, media_type="image/jpeg")
 
-    # 3. If thumbnail or storyboard frames exist in data folder
+    # 3. Stream extraction via yt-dlp low-res format directly from video stream at the requested timestamp
+    if url:
+        try:
+            from .pipeline.downloader import get_ytdl
+            with get_ytdl({'skip_download': True, 'quiet': True}) as y:
+                info = y.extract_info(url, download=False)
+            formats = [f for f in info.get("formats", []) if f.get("vcodec") not in (None, "none") and f.get("url") and f.get("height", 9999) <= 480]
+            st_url = max(formats, key=lambda f: f.get("height", 0))["url"] if formats else info.get("url")
+            if st_url:
+                cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", st_url, "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "2", str(out_p)]
+                subprocess.run(cmd, capture_output=True, timeout=20, creationflags=0x08000000 if os.name == "nt" else 0)
+                if out_p.exists():
+                    return FileResponse(out_p, media_type="image/jpeg")
+        except Exception:
+            pass
+
+    # 4. Fallback only if live seeking fails: check storyboard frames in data folder
     if id:
         folder = DATA_DIR / id
         if folder.exists():
@@ -806,21 +825,6 @@ def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_i
                 cf = candidates[idx]
                 if cf.exists():
                     return FileResponse(cf, media_type="image/jpeg")
-
-    # 4. Stream extraction via yt-dlp low-res format
-    if url:
-        try:
-            import yt_dlp
-            with yt_dlp.YoutubeDL({'skip_download': True, 'quiet': True}) as y:
-                info = y.extract_info(url, download=False)
-            formats = [f for f in info.get("formats", []) if f.get("vcodec") not in (None, "none") and f.get("url") and f.get("height", 9999) <= 480]
-            st_url = max(formats, key=lambda f: f.get("height", 0))["url"] if formats else info.get("url")
-            cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", st_url, "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3", str(out_p)]
-            subprocess.run(cmd, capture_output=True, timeout=20, creationflags=0x08000000 if os.name == "nt" else 0)
-            if out_p.exists():
-                return FileResponse(out_p, media_type="image/jpeg")
-        except Exception:
-            pass
 
     # 5. Check any frame_0.jpg fallback in DATA_DIR
     for fallback in DATA_DIR.rglob("frame_0.jpg"):
@@ -848,6 +852,7 @@ def api_fetch_slice(body: dict):
     out_dir = DATA_DIR / "slices"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    sec_file = None
     src = get_source_file(id_str) if id_str else None
     if src and src.exists():
         out_mp4 = out_dir / f"{slice_id}.mp4"
@@ -862,26 +867,41 @@ def api_fetch_slice(body: dict):
             str(out_mp4)
         ]
         subprocess.run(cmd, check=True, timeout=120, creationflags=0x08000000 if os.name == "nt" else 0)
-        return {
-            "success": True,
-            "slice_id": slice_id,
-            "duration": end - start,
-            "file": f"/media/slices/{slice_id}.mp4"
-        }
+        sec_file = out_mp4
     elif url:
         try:
             from .pipeline.downloader import download_video_section
             sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality)
-            meta = probe_video(sec_file)
-            return {
-                "success": True,
-                "slice_id": slice_id,
-                "duration": meta.get("duration", end - start),
-                "file": f"/media/slices/{sec_file.name}"
-            }
         except Exception as e:
             raise HTTPException(500, f"Failed to fetch slice: {clean_error_message(e)}")
-    raise HTTPException(400, "No source video or URL provided.")
+    else:
+        raise HTTPException(400, "No source video or URL provided.")
+
+    if not sec_file or not sec_file.exists():
+        raise HTTPException(500, "Slice video file could not be generated.")
+
+    meta = probe_video(sec_file)
+    dur = float(meta.get("duration", end - start))
+    mid_sec = max(0.0, min(dur - 0.2, dur / 2.0))
+    preview_jpg = out_dir / f"{slice_id}_preview.jpg"
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-ss", f"{mid_sec:.2f}",
+        "-i", str(sec_file),
+        "-frames:v", "1",
+        "-vf", "scale=960:-2",
+        "-q:v", "2",
+        str(preview_jpg)
+    ]
+    subprocess.run(cmd, capture_output=True, timeout=15, creationflags=0x08000000 if os.name == "nt" else 0)
+
+    return {
+        "success": True,
+        "slice_id": slice_id,
+        "duration": dur,
+        "file": f"/media/slices/{sec_file.name}",
+        "preview": f"/media/slices/{preview_jpg.name}" if preview_jpg.exists() else None
+    }
 
 @app.post("/api/slice/captions")
 def api_slice_captions(body: dict):

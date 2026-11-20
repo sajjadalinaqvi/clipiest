@@ -129,7 +129,8 @@ def write_subtitles(
     hook: str = "",
     caption_y: int = 1450,
     hook_y: int = 260,
-    hook_style: str = "banner"
+    hook_style: str = "banner",
+    duration: float = 0.0
 ) -> tuple:
     """Builds styled ASS and standard SRT files. Returns (ass_filename, srt_filename)."""
     st = STYLE_DEFINITIONS.get(style_key, STYLE_DEFINITIONS["bounce"])
@@ -192,14 +193,15 @@ def write_subtitles(
                 dialogue_text = r"{\pos(" + str(W // 2) + r"," + str(caption_y) + r")\fs" + str(st["size"]) + st["extra"] + r"}" + " ".join(chunks)
                 ass.append(f"Dialogue: 1,{stamp(a, True)},{stamp(b, True)},Main,,0,0,0,,{dialogue_text}")
 
-    # Hook Title Overlay (shown in first 3.2 seconds)
+    # Hook Title Overlay (shown across the entire video clip)
     if hook.strip():
         lines = hook_lines(to_roman(hook))
         h_size = 78 if len(lines) == 1 else 70 if len(lines) == 2 else 62
         hook_text = r"\N".join(lines).upper()
         hs = HOOK_STYLES.get(hook_style, HOOK_STYLES["banner"])
-        hook_tag = rf"{{\an8\pos({W // 2},{hook_y})\fs{h_size}\b1\c{hs['primary']}\3c{hs['outline']}\bord{hs['bord']}\shad{hs['shad']}\blur{hs['blur']}\fad(150,250)}}"
-        ass.append(f"Dialogue: 2,0:00:00.00,0:00:03.20,Hook,,0,0,0,,{hook_tag}{hook_text}")
+        hook_tag = rf"{{\an8\pos({W // 2},{hook_y})\fs{h_size}\b1\c{hs['primary']}\3c{hs['outline']}\bord{hs['bord']}\shad{hs['shad']}\blur{hs['blur']}\fad(150,0)}}"
+        end_time_sec = duration if duration > 0 else max(7200.0, max((w["end"] for w in norm_words), default=7200.0))
+        ass.append(f"Dialogue: 2,0:00:00.00,{stamp(end_time_sec, True)},Hook,,0,0,0,,{hook_tag}{hook_text}")
 
     ass_name = f"{name}.ass"
     srt_name = f"{name}.srt"

@@ -41,9 +41,10 @@ class TestMomentScoutOptimization(unittest.TestCase):
         ]
 
         query_counts = [0]
-        def fake_ask_llm(prompt, schema=None, model=None, max_tokens=1024):
+        def fake_ask_llm(prompt, *args, **kwargs):
             query_counts[0] += 1
-            self.assertLessEqual(max_tokens, 1024)
+            if "max_tokens" in kwargs:
+                self.assertLessEqual(kwargs["max_tokens"], 1024)
             return mock_moments
 
         with patch("clipiest.ai.brain.ask_llm", side_effect=fake_ask_llm):
@@ -69,6 +70,27 @@ class TestMomentScoutOptimization(unittest.TestCase):
             res = api_llm_ping()
             self.assertTrue(res.get("success"))
             self.assertEqual(res.get("models_count"), 1)
+
+    def test_hook_stays_on_screen_whole_clip(self):
+        """Verifies hook is active across the entire clip duration instead of vanishing after 3s."""
+        import tempfile
+        from pathlib import Path
+        from clipiest.rendering.captions import write_subtitles
+
+        with tempfile.TemporaryDirectory() as td:
+            out_p = Path(td)
+            ass_fn, _ = write_subtitles(
+                words=[{"start": 0.0, "end": 2.0, "text": "Hello"}],
+                style_key="bounce",
+                out_dir=out_p,
+                name="test_whole_hook",
+                hook="TEST HOOK ON SCREEN",
+                duration=45.0
+            )
+            content = (out_p / ass_fn).read_text(encoding="utf-8")
+            # Hook dialogue line should show end time 0:00:45.00
+            self.assertIn("Dialogue: 2,0:00:00.00,0:00:45.00,Hook", content)
+            self.assertIn(r"\fad(150,0)", content)
 
 if __name__ == "__main__":
     unittest.main()

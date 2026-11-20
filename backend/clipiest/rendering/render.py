@@ -84,9 +84,10 @@ def render_clip(
         graph = render_graph(layout, rects, top)
 
         has_subtitles = bool((words and len(words) > 0) or hook.strip())
+        clip_dur = max(0.5, float(end - start))
         if has_subtitles:
             write_subtitles(
-                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=safe_hook_y, hook_style=hook_style
+                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=safe_hook_y, hook_style=hook_style, duration=clip_dur
             )
             fc = f"{graph};[base]ass=subs.ass:fontsdir=f[v]"
         else:

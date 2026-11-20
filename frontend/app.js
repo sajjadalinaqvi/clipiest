@@ -1464,12 +1464,23 @@ function selectMoment(moment, cardEl) {
 }
 
 async function updatePreviewFrame(sec) {
-  const midSec = Math.max(0, Number(sec) || 0);
   const url = $('video-url')?.value.trim() || appState.sourceUrl;
   const id = appState.sourceId || '';
   const sliceId = appState.fetchedSliceId || '';
+  const start = Number($('time-start')?.value || 0);
+  const end = Number($('time-end')?.value || start + 30);
+  
+  // If slice has been downloaded, use relative time inside slice
+  let targetSec = Math.max(0, Number(sec) || 0);
+  if (sliceId) {
+    if (targetSec >= start && targetSec <= end) {
+      targetSec = targetSec - start;
+    } else if (targetSec > (end - start)) {
+      targetSec = (end - start) / 2;
+    }
+  }
 
-  const frameUrl = `/api/preview/frame?id=${encodeURIComponent(id)}&url=${encodeURIComponent(url)}&sec=${midSec.toFixed(2)}&slice_id=${encodeURIComponent(sliceId)}&t=${Date.now()}`;
+  const frameUrl = `/api/preview/frame?id=${encodeURIComponent(id)}&url=${encodeURIComponent(url)}&sec=${targetSec.toFixed(2)}&slice_id=${encodeURIComponent(sliceId)}&t=${Date.now()}`;
 
   const img = new Image();
   img.crossOrigin = "anonymous";
@@ -1533,8 +1544,21 @@ async function fetchSlice() {
       $('studio-workflow-badge').textContent = 'Step 3: Slice Fetched · Add Captions';
     }
 
-    // Refresh canvas frame from the newly downloaded slice
-    updatePreviewFrame(0);
+    if ($('selected-moment-badge')) {
+      $('selected-moment-badge').innerHTML = `🎬 Extracted Slice: <strong>${formatTime(start)} - ${formatTime(end)}</strong> (${(end - start).toFixed(0)}s)`;
+    }
+
+    // Refresh canvas frame directly from the newly downloaded slice preview
+    if (res.preview) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = `${res.preview}?t=${Date.now()}`;
+      img.onload = () => {
+        setImageSource(img);
+      };
+    } else {
+      updatePreviewFrame(0);
+    }
 
   } catch (e) {
     if (statusEl) {
