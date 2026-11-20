@@ -34,7 +34,7 @@ from .rendering.reedit import attach_reedit, find_file
 from .vision.previews import extract_storyboard, extract_seek_frame, preview_video_url
 from .vision.facecam import detect_facecam
 from .ai.learn import record_feedback, load_weights
-from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider
+from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider, fetch_models_with_url
 from .live.session import LiveClipManager
 from .storage.manager import get_disk_info, open_folder_in_os
 from . import creators
@@ -173,8 +173,8 @@ def api_test_llm(body: dict):
 
 @app.get("/api/llm/models")
 def api_get_llm_models(provider: str = "lmstudio", base_url: str = "", api_key: str = ""):
-    models = fetch_models_from_provider(provider, base_url, api_key)
-    return {"provider": provider, "models": models}
+    models, working_url = fetch_models_with_url(provider, base_url, api_key)
+    return {"provider": provider, "models": models, "base_url": working_url}
 
 # -------------------------------------------------------------
 # System & Telemetry Endpoints

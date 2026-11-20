@@ -55,6 +55,41 @@ WHISPER_MODELS = [
     "tiny"
 ]
 
+def _try_import_peakcut_ai() -> dict | None:
+    """Attempts to auto-discover saved AI settings from PeakCut if present on the system."""
+    import json
+    candidates = [
+        Path(r"D:\notsaju Clips\peakcut\ai.json"),
+        Path(r"C:\peakcut\ai.json"),
+        Path(r"C:\peakcut\data\ai.json")
+    ]
+    try:
+        stor = Path(r"C:\peakcut\storage.json")
+        if stor.exists():
+            p = json.loads(stor.read_text(encoding="utf-8")).get("path")
+            if p:
+                candidates.insert(0, Path(p) / "ai.json")
+    except Exception:
+        pass
+        
+    for cand in candidates:
+        if cand.exists():
+            try:
+                d = json.loads(cand.read_text(encoding="utf-8"))
+                if isinstance(d, dict) and d.get("base_url"):
+                    ms = d.get("models") or []
+                    model = ms[0] if ms else "qwen/qwen3.5-9b"
+                    prov = "lmstudio" if d.get("provider") in ("custom", "lmstudio") else d.get("provider", "lmstudio")
+                    return {
+                        "provider": prov,
+                        "base_url": d.get("base_url", "http://localhost:1235/v1"),
+                        "api_key": d.get("key", "lm-studio"),
+                        "model": model
+                    }
+            except Exception:
+                pass
+    return None
+
 def load_user_config() -> dict:
     import json
     if CONFIG_FILE.exists():
@@ -64,13 +99,31 @@ def load_user_config() -> dict:
                 return data
         except Exception:
             pass
+            
+    pk_ai = _try_import_peakcut_ai()
+    if pk_ai:
+        imported = {
+            "configured": True,
+            "ai": pk_ai,
+            "whisper": {
+                "engine": "faster_whisper",
+                "model": "small",
+                "use_cpu": False
+            }
+        }
+        try:
+            CONFIG_FILE.write_text(json.dumps(imported, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return imported
+
     return {
         "configured": False,
         "ai": {
             "provider": "lmstudio",
-            "base_url": "http://127.0.0.1:1234/v1",
-            "api_key": "",
-            "model": "local-model"
+            "base_url": "http://localhost:1235/v1",
+            "api_key": "lm-studio",
+            "model": "qwen/qwen3.5-9b"
         },
         "whisper": {
             "engine": "faster_whisper",

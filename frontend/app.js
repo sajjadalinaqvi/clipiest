@@ -59,10 +59,10 @@ const appState = {
 const PROVIDER_PRESETS = {
   lmstudio: {
     name: 'LM Studio (Local)',
-    url: 'http://127.0.0.1:1234/v1',
-    hint: 'Make sure LM Studio local server is started on port 1234.',
-    keyHint: 'Optional (leave blank for local LM Studio)',
-    defaultModel: 'local-model'
+    url: 'http://localhost:1235/v1',
+    hint: 'Make sure LM Studio local server is started (port 1235 or 1234).',
+    keyHint: 'Optional (leave blank or use lm-studio)',
+    defaultModel: 'qwen/qwen3.5-9b'
   },
   ollama: {
     name: 'Ollama (Local)',
@@ -108,10 +108,10 @@ const PROVIDER_PRESETS = {
   },
   custom: {
     name: 'Custom OpenAI-Compatible API',
-    url: 'http://127.0.0.1:1234/v1',
+    url: 'http://localhost:1235/v1',
     hint: 'Custom OpenAI-compatible server base URL.',
     keyHint: 'API Key (if required by endpoint)',
-    defaultModel: 'default-model'
+    defaultModel: 'qwen/qwen3.5-9b'
   }
 };
 
@@ -261,9 +261,12 @@ function setupConfigurationEvents() {
       });
       const res = await api(`/api/llm/models?${q.toString()}`, { method: 'GET' });
       const models = res.models || [];
+      if (res.base_url) {
+        $('cfg-base-url').value = res.base_url;
+      }
       if (models.length) {
         statusBox.className = 'cfg-status-box success';
-        statusBox.textContent = `Found ${models.length} model(s) available on server!`;
+        statusBox.textContent = `Found ${models.length} model(s) available on ${$('cfg-base-url').value}!`;
         const dd = $('cfg-models-dropdown');
         dd.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
         dd.hidden = false;
@@ -615,7 +618,7 @@ function setupControls() {
 
       // Show success status
       statusEl.className = 'status-message active-success';
-      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Interactive framing active.`;
+      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Click <strong>⚡ Make Clips (Auto AI)</strong> above to scout viral moments with LLM, or adjust Start/End and Framing below to export a custom cut.`;
 
       // Hide canvas placeholder
       $('canvas-placeholder').hidden = true;

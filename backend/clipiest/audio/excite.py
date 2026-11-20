@@ -47,7 +47,7 @@ def seconds_signal(words: list, duration: float) -> np.ndarray:
     sig += rate_boost
     
     sig = np.minimum(sig, 8.0)
-    k = np.ones(5) / 5
+    k = np.array([0.1, 0.2, 0.4, 0.2, 0.1], dtype=np.float32)
     sm = np.convolve(sig, k, "same")
     peak = max(float(np.percentile(sm[sm > 0], 95)) if (sm > 0).any() else 1.0, 1.0)
     return np.clip(sm / peak, 0.0, 1.0)

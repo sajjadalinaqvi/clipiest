@@ -19,7 +19,7 @@ from ..audio.highlights import rank_highlights
 from ..audio.excite import seconds_signal, window_score
 from ..vision.action import analyze_action
 from ..vision.facecam import detect_facecam
-from ..ai.brain import evaluate_moment, snap_clip_to_sentences
+from ..ai.brain import evaluate_moment, snap_clip_to_sentences, find_viral_moments_ai
 from ..ai.games import detect_game
 from ..ai.learn import load_weights, compute_rank_score
 from ..rendering.render import render_clip, probe_video
@@ -122,54 +122,36 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                 y.download([url])
             audio_file = next(f for f in vdir.glob(f"{job_id}.audio.*") if f.suffix not in (".part", ".ytdl"))
             
-            save_fn({"stage": "Finding highlights in audio & speech...", "progress": 0.25})
-            excite_sig = seconds_signal(yt_words, duration) if yt_words else None
-            candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False, extra_excite=excite_sig)
+            save_fn({"stage": "Scouting viral moments with AI & speech analysis...", "progress": 0.25})
+            from ..audio.highlights import _audio_profile
+            rms, _ = _audio_profile(audio_file)
             
-            # Visual action check on top candidates using tiny 144p snippets
-            save_fn({"stage": "Evaluating visual action & emotion...", "progress": 0.40})
-            from yt_dlp.utils import download_range_func
-            for c in candidates:
-                lr_name = f"lr_{uuid.uuid4().hex[:8]}"
-                try:
-                    with get_ytdl({
-                        "format": "worst[ext=mp4]/bv*[height<=240][ext=mp4]/worst",
-                        "outtmpl": str(vdir / f"{lr_name}.%(ext)s"),
-                        "merge_output_format": "mp4",
-                        "download_ranges": download_range_func(None, [(max(0, c["start"]), c["end"])])
-                    }) as y:
-                        y.download([url])
-                    lr_file = next((f for f in vdir.glob(f"{lr_name}.*") if f.suffix == ".mp4"), None)
-                    if lr_file:
-                        c["action"] = analyze_action(lr_file, 0, c["end"] - c["start"])
-                        lr_file.unlink(missing_ok=True)
-                except Exception:
-                    c["action"] = {"motion": 0.2, "flash": 0.0, "strobe": 0.0, "cuts": 0.1}
-
-            # LLM Evaluation & Sentence Snapping
-            save_fn({"stage": "Generating AI titles, hooks & transcripts...", "progress": 0.55})
-            for c in candidates:
-                if yt_words:
-                    c["words"] = window_words(yt_words, c["start"], c["end"])
-                else:
+            if yt_words and len(yt_words) >= 15:
+                # PeakCut-grade transcript & loudness AI scouting
+                chosen = find_viral_moments_ai(
+                    words=yt_words,
+                    db=rms,
+                    duration=duration,
+                    title=title,
+                    uploader=uploader,
+                    max_clips=count,
+                    min_len=min_len,
+                    max_len=max_len,
+                    game_name=game_name,
+                    log=lambda m: save_fn({"stage": m, "progress": 0.40})
+                )
+            else:
+                excite_sig = seconds_signal(yt_words, duration) if yt_words else None
+                candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False, extra_excite=excite_sig)
+                for c in candidates:
                     res = transcribe_audio_segment(audio_file, c["start"], c["end"], vdir, report_fn=lambda m: None)
                     c["words"] = res["words"]
-                    
-                snap_clip_to_sentences(c, c["words"], min_len, max_len)
-                txt = " ".join(w["text"] for w in c["words"])
-                eval_data = evaluate_moment(txt, title, game_name)
-                c.update(eval_data)
-                
-                feats = {
-                    **c.get("features", {}),
-                    **c.get("action", {}),
-                    "words": window_score(c["words"], c["end"] - c["start"]),
-                    "llm": c["score"] / 100.0
-                }
-                c["rank"] = compute_rank_score(feats, learned_weights)
-
-            candidates.sort(key=lambda x: -x.get("rank", 0))
-            chosen = candidates[:count]
+                    snap_clip_to_sentences(c, c["words"], min_len, max_len)
+                    txt = " ".join(w["text"] for w in c["words"])
+                    eval_data = evaluate_moment(txt, title, game_name)
+                    c.update(eval_data)
+                candidates.sort(key=lambda x: -x.get("score", 0))
+                chosen = candidates[:count]
             
             # Fetch only the chosen video sections in parallel
             save_fn({"stage": "Fetching chosen video clips...", "progress": 0.65})
@@ -192,32 +174,34 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
             duration = meta["duration"]
             
             save_fn({"stage": "Scanning optical flow, audio & motion...", "progress": 0.35})
-            excite_sig = seconds_signal(yt_words, duration) if yt_words else None
-            candidates = rank_highlights(src_file, duration, count * 3, max_len, motion_on=True, extra_excite=excite_sig)
+            from ..audio.highlights import _audio_profile
+            rms, _ = _audio_profile(src_file)
             
-            save_fn({"stage": "Evaluating moments with AI...", "progress": 0.55})
-            for c in candidates:
-                if yt_words:
-                    c["words"] = window_words(yt_words, c["start"], c["end"])
-                else:
+            if yt_words and len(yt_words) >= 15:
+                chosen = find_viral_moments_ai(
+                    words=yt_words,
+                    db=rms,
+                    duration=duration,
+                    title=title,
+                    uploader=uploader,
+                    max_clips=count,
+                    min_len=min_len,
+                    max_len=max_len,
+                    game_name=game_name,
+                    log=lambda m: save_fn({"stage": m, "progress": 0.50})
+                )
+            else:
+                excite_sig = seconds_signal(yt_words, duration) if yt_words else None
+                candidates = rank_highlights(src_file, duration, count * 3, max_len, motion_on=True, extra_excite=excite_sig)
+                for c in candidates:
                     res = transcribe_audio_segment(src_file, c["start"], c["end"], vdir, report_fn=lambda m: None)
                     c["words"] = res["words"]
-                snap_clip_to_sentences(c, c["words"], min_len, max_len)
-                txt = " ".join(w["text"] for w in c["words"])
-                eval_data = evaluate_moment(txt, title, game_name)
-                c.update(eval_data)
-                
-                act = analyze_action(src_file, c["start"], c["end"] - c["start"])
-                feats = {
-                    **c.get("features", {}),
-                    **act,
-                    "words": window_score(c["words"], c["end"] - c["start"]),
-                    "llm": c["score"] / 100.0
-                }
-                c["rank"] = compute_rank_score(feats, learned_weights)
-
-            candidates.sort(key=lambda x: -x.get("rank", 0))
-            chosen = candidates[:count]
+                    snap_clip_to_sentences(c, c["words"], min_len, max_len)
+                    txt = " ".join(w["text"] for w in c["words"])
+                    eval_data = evaluate_moment(txt, title, game_name)
+                    c.update(eval_data)
+                candidates.sort(key=lambda x: -x.get("score", 0))
+                chosen = candidates[:count]
             sections = [(src_file, 0.0)] * len(chosen)
 
         # Automated Facecam Detection check if user kept default boxes
