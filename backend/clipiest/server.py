@@ -11,6 +11,7 @@ import math
 import shutil
 import threading
 import subprocess
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -22,7 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import (
     DATA_DIR, ROOT, BACKEND_DIR, TMP_DIR, DOWNLOADS_DIR, HOST, PORT, PUBLIC_URL,
     HAS_NVENC, HAS_QSV, AI_PROVIDER, AI_MODELS, WHISPER_MODEL,
-    load_user_config, save_user_config, is_configured, WHISPER_MODELS
+    load_user_config, save_user_config, is_configured, WHISPER_MODELS,
+    COOKIES_FILE, get_cookies_file
 )
 from .pipeline.orchestrator import run_clip_pipeline
 from .pipeline.queue import JobQueue, SystemMonitor
@@ -249,6 +251,14 @@ async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Fo
         **meta
     }
 
+def clean_error_message(err: Exception) -> str:
+    """Strips terminal ANSI color sequences and translates known errors into actionable user advice."""
+    msg = str(err)
+    msg = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', msg)
+    if any(p in msg.lower() for p in ["sign in to confirm your age", "confirm your age", "use --cookies", "inappropriate for some users"]):
+        return "This video is age-restricted or requires YouTube sign-in. Please upload a cookies.txt file in LLM & Settings > YouTube Cookies to access this video."
+    return msg
+
 @app.post("/preview/url")
 @app.post("/api/preview/url")
 def api_preview_url(body: dict):
@@ -262,7 +272,7 @@ def api_preview_url(body: dict):
         data = preview_video_url(url, creator_id=creator_id)
         return data
     except Exception as e:
-        raise HTTPException(400, f"Failed to inspect video: {e}")
+        raise HTTPException(400, f"Failed to inspect video: {clean_error_message(e)}")
 
 @app.get("/preview/{source_id}/storyboard")
 @app.get("/api/preview/{source_id}/storyboard")
@@ -673,7 +683,7 @@ def api_scout_moments(body: dict):
     except Exception as e:
         for p in tmp_clean:
             shutil.rmtree(p, ignore_errors=True)
-        raise HTTPException(500, f"Analysis failed: {e}")
+        raise HTTPException(500, f"Analysis failed: {clean_error_message(e)}")
 
 @app.get("/hook-styles")
 @app.get("/api/hook-styles")
@@ -780,15 +790,18 @@ def api_fetch_slice(body: dict):
             "file": f"/media/slices/{slice_id}.mp4"
         }
     elif url:
-        from .pipeline.downloader import download_video_section
-        sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality)
-        meta = probe_video(sec_file)
-        return {
-            "success": True,
-            "slice_id": slice_id,
-            "duration": meta.get("duration", end - start),
-            "file": f"/media/slices/{sec_file.name}"
-        }
+        try:
+            from .pipeline.downloader import download_video_section
+            sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality)
+            meta = probe_video(sec_file)
+            return {
+                "success": True,
+                "slice_id": slice_id,
+                "duration": meta.get("duration", end - start),
+                "file": f"/media/slices/{sec_file.name}"
+            }
+        except Exception as e:
+            raise HTTPException(500, f"Failed to fetch slice: {clean_error_message(e)}")
     raise HTTPException(400, "No source video or URL provided.")
 
 @app.post("/api/slice/captions")
@@ -899,6 +912,50 @@ def api_clean_tmp():
             except Exception:
                 pass
     return {"success": True, "cleaned": count}
+
+# -------------------------------------------------------------
+# YouTube Authentication & Cookies Management
+# -------------------------------------------------------------
+@app.get("/api/cookies/status")
+def get_cookies_status():
+    cf = get_cookies_file()
+    if cf and cf.exists() and cf.is_file():
+        return {
+            "configured": True,
+            "filename": cf.name,
+            "path": str(cf),
+            "size_bytes": cf.stat().st_size
+        }
+    return {
+        "configured": False,
+        "filename": None,
+        "path": None,
+        "size_bytes": 0
+    }
+
+@app.post("/api/cookies/upload")
+async def upload_cookies(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".txt"):
+        raise HTTPException(400, "Please upload a valid .txt cookie file (Netscape format).")
+    content = await file.read()
+    if len(content) < 10:
+        raise HTTPException(400, "Cookie file is empty or invalid.")
+    COOKIES_FILE.write_bytes(content)
+    return {
+        "success": True,
+        "message": "YouTube cookies successfully saved.",
+        "size_bytes": len(content)
+    }
+
+@app.delete("/api/cookies")
+def delete_cookies():
+    cf = get_cookies_file()
+    if cf and cf.exists():
+        try:
+            cf.unlink()
+        except Exception as e:
+            raise HTTPException(500, f"Failed to delete cookies file: {e}")
+    return {"success": True, "message": "Cookies removed."}
 
 # -------------------------------------------------------------
 # Clip Library & Media Retrieval

@@ -4,6 +4,7 @@ Extracts frames across the duration before or during full source video download.
 import io
 import json
 import os
+import re
 import subprocess
 import urllib.request
 import uuid
@@ -12,9 +13,23 @@ from typing import Optional
 from PIL import Image
 import yt_dlp
 
-from ..config import DATA_DIR
+from ..config import DATA_DIR, get_cookies_file
 from ..ai.games import detect_game
 from .facecam import detect_facecam
+
+def extract_youtube_id(url: str) -> Optional[str]:
+    """Extracts 11-char YouTube video ID from various URL patterns."""
+    if not url:
+        return None
+    patterns = [
+        r'(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/e\/)([0-9A-Za-z_-]{11})',
+        r'^([0-9A-Za-z_-]{11})$'
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -115,14 +130,46 @@ def preview_video_url(url: str, creator_id: Optional[str] = None) -> dict:
     if not url:
         raise ValueError("Video URL cannot be empty.")
 
+    cookie_p = get_cookies_file()
     opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "socket_timeout": 15
     }
-    with yt_dlp.YoutubeDL(opts) as y:
-        info = y.extract_info(url, download=False)
+    if cookie_p:
+        opts["cookiefile"] = str(cookie_p)
+
+    info = None
+    age_restricted = False
+    try:
+        with yt_dlp.YoutubeDL(opts) as y:
+            info = y.extract_info(url, download=False)
+    except Exception as ytdl_err:
+        err_str = str(ytdl_err)
+        yt_id = extract_youtube_id(url)
+        if yt_id:
+            age_restricted = any(phrase in err_str.lower() for phrase in ["sign in", "confirm your age", "cookies", "inappropriate", "private"])
+            title = f"YouTube Video ({yt_id})"
+            uploader = "YouTube Creator"
+            try:
+                oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={yt_id}&format=json"
+                req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    oembed_data = json.loads(resp.read().decode("utf-8"))
+                    title = oembed_data.get("title") or title
+                    uploader = oembed_data.get("author_name") or uploader
+            except Exception:
+                pass
+            info = {
+                "id": yt_id,
+                "title": title,
+                "uploader": uploader,
+                "duration": 0.0,
+                "thumbnail": f"https://i.ytimg.com/vi/{yt_id}/maxresdefault.jpg"
+            }
+        else:
+            raise ytdl_err
 
     vid_id = info.get("id") or uuid.uuid4().hex[:8]
     title = info.get("title") or "Video"
@@ -228,8 +275,15 @@ def preview_video_url(url: str, creator_id: Optional[str] = None) -> dict:
         "game": game,
         "hashtags": hashtags,
         "cam": cam_box,
-        "creator": creator_id
+        "creator": creator_id,
+        "age_restricted": age_restricted
     }
+    if age_restricted:
+        meta_payload["notice"] = (
+            "Age-restricted or sign-in required video detected. "
+            "Preview frames were loaded via YouTube CDN. "
+            "To download video slices or audio, please configure YouTube cookies in LLM & Settings."
+        )
     (folder / "source.json").write_text(json.dumps(meta_payload, indent=2), encoding="utf-8")
 
     if creator_id:

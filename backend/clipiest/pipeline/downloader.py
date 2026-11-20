@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 import numpy as np
 import yt_dlp
-from ..config import PAD_SEC
+from ..config import PAD_SEC, get_cookies_file
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 BELOW_NORMAL_PRIORITY = 0x00004000 if os.name == "nt" else 0
@@ -20,6 +20,9 @@ def get_ytdl(extra_opts: dict = None):
         "fragment_retries": 3,
         "concurrent_fragment_downloads": 4
     }
+    cookie_p = get_cookies_file()
+    if cookie_p:
+        opts["cookiefile"] = str(cookie_p)
     if extra_opts:
         opts.update(extra_opts)
     return yt_dlp.YoutubeDL(opts)
@@ -48,7 +51,7 @@ def find_exact_section_start(master_audio_path: Path, section_video_path: Path, 
     corr = np.fft.irfft(np.fft.rfft(hay, size) * np.conj(np.fft.rfft(needle, size)), size)[:len(hay) - len(needle) + 1]
     return a0 + int(np.argmax(corr)) / 8000.0
 
-def download_video_section(url: str, out_dir: Path, name: str, start: float, end: float) -> Path:
+def download_video_section(url: str, out_dir: Path, name: str, start: float, end: float, height: int = 720) -> Path:
     """Downloads only the required time slice of a video using yt-dlp download_ranges with robust FFmpeg fallback."""
     from yt_dlp.utils import download_range_func
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -56,7 +59,7 @@ def download_video_section(url: str, out_dir: Path, name: str, start: float, end
     
     # 1. Primary: yt-dlp download_ranges (fastest for YouTube DASH)
     opts = {
-        "format": "bv*[height<=720]+ba/b[height<=720]/b",
+        "format": f"bv*[height<={height}]+ba/b[height<={height}]/b",
         "merge_output_format": "mp4",
         "outtmpl": out_tmpl,
         "download_ranges": download_range_func(None, [(max(0.0, start - PAD_SEC), end + 1.0)])
@@ -79,7 +82,7 @@ def download_video_section(url: str, out_dir: Path, name: str, start: float, end
         if not stream_url and info.get("formats"):
             formats = [f for f in info["formats"] if f.get("url")]
             if formats:
-                cand = [f for f in formats if f.get("height", 9999) <= 720]
+                cand = [f for f in formats if f.get("height", 9999) <= height]
                 stream_url = (cand[-1] if cand else formats[-1])["url"]
         
         if stream_url:
@@ -104,5 +107,8 @@ def download_video_section(url: str, out_dir: Path, name: str, start: float, end
         
     res = next((p for p in out_dir.glob(f"{name}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
     if not res:
+        cookie_p = get_cookies_file()
+        if not cookie_p and ("youtube.com" in url or "youtu.be" in url):
+            raise RuntimeError(f"Section download failed for {url}. If this video is age-restricted or requires sign-in, please upload cookies.txt in Settings > YouTube Cookies.")
         raise RuntimeError(f"Section download failed for {url}")
     return res

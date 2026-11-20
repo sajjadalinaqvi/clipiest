@@ -166,6 +166,7 @@
             <div id="reel-frames" class="reel-frames"></div>
           </div>
           <div id="import-status" class="status-message" hidden></div>
+          <div id="source-notice-banner" class="source-notice-banner" hidden></div>
         </div>
 
         <!-- STEP 2: LLM Moment Scouting (Timestamps Only) -->
@@ -526,6 +527,35 @@
                   Studio models, or change Whisper accuracy.</p>
                 <button id="settings-reconfigure-btn" class="btn-secondary" style="width:100%;">⚙️ Reconfigure LLM &amp;
                   Whisper</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- YouTube Authentication & Cookies Panel -->
+          <div class="panel" style="margin-top: 20px;">
+            <div class="panel-title">
+              <h3>YouTube Authentication &amp; Cookies</h3>
+              <span id="cookies-status-badge" class="badge">Checking...</span>
+            </div>
+            <div class="cookies-config-box">
+              <p class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px;">
+                Required for <strong>age-restricted (18+)</strong>, mature, or private YouTube videos.
+                Export your YouTube cookies in Netscape format and upload below to allow Clipiest to download sections seamlessly.
+              </p>
+              <div class="cookies-actions-row">
+                <input type="file" id="cookies-file-input" accept=".txt" hidden>
+                <button type="button" id="upload-cookies-btn" class="btn-primary btn-sm">📁 Upload cookies.txt</button>
+                <button type="button" id="delete-cookies-btn" class="btn-danger btn-sm" style="display:none;">🗑️ Remove Cookies</button>
+                <span id="cookies-info-text" class="muted" style="font-size:12px;margin-left:8px;"></span>
+              </div>
+              <div class="cookies-guide-box">
+                <strong>💡 Quick 30-Second Guide:</strong>
+                <ol style="margin:8px 0 0 18px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                  <li>Install the free browser extension <strong>"Get cookies.txt LOCALLY"</strong> (available on Chrome Web Store and Firefox Add-ons).</li>
+                  <li>Open <a href="https://www.youtube.com" target="_blank" style="color:var(--cyan);text-decoration:underline;">YouTube.com</a> while signed into your account.</li>
+                  <li>Click the extension icon and click <strong>"Export"</strong> to save your <code>cookies.txt</code>.</li>
+                  <li>Click <strong>Upload cookies.txt</strong> above. Clipiest will instantly use it for all video streams!</li>
+                </ol>
               </div>
             </div>
           </div>

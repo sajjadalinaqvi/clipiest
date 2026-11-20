@@ -163,6 +163,7 @@ async function init() {
   setupControls();
   setupStudioWorkflow();
   setupStorageManager();
+  setupCookiesManager();
   setupConfigurationEvents();
   setupCreatorEvents();
 
@@ -404,6 +405,9 @@ function setupNavigation() {
       if (btn.dataset.tab === 'library') {
         loadLibrary();
       }
+      if (btn.dataset.tab === 'settings') {
+        loadCookieStatus();
+      }
     };
   });
 
@@ -632,9 +636,25 @@ function setupControls() {
         $('source-status-badge').textContent = `${res.game || 'Video'} · ${durStr} · ${appState.sourceWidth}x${appState.sourceHeight}`;
       }
 
-      // Show success status
-      statusEl.className = 'status-message active-success';
-      statusEl.innerHTML = `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Click <strong>⚡ Start Video Analysis</strong> in Step 2 to scout viral moments with LLM.`;
+      // Notice banner for age-restricted / warnings
+      if ($('source-notice-banner')) {
+        if (res.notice) {
+          $('source-notice-banner').hidden = false;
+          $('source-notice-banner').innerHTML = `
+            <strong>⚠️ ${escapeHtml(res.notice)}</strong><br>
+            <span style="font-size:12px;opacity:0.9;">Configure YouTube cookies anytime in <button type="button" class="btn-link" onclick="document.querySelector('[data-tab=\\'settings\\']')?.click();">⚡ LLM &amp; Settings &gt; YouTube Cookies</button>.</span>
+          `;
+        } else {
+          $('source-notice-banner').hidden = true;
+          $('source-notice-banner').innerHTML = '';
+        }
+      }
+
+      // Show success/warning status
+      statusEl.className = res.notice ? 'status-message active-warning' : 'status-message active-success';
+      statusEl.innerHTML = res.notice
+        ? `⚠️ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded via YouTube CDN! Review crop boxes or configure cookies to download slices.`
+        : `✅ <strong>${escapeHtml(res.title)}</strong> (${durStr}) loaded! Click <strong>⚡ Start Video Analysis</strong> in Step 2 to scout viral moments with LLM.`;
 
       if ($('start-scout-btn')) $('start-scout-btn').disabled = false;
       if ($('studio-workflow-badge')) $('studio-workflow-badge').textContent = 'Step 2: Video Loaded · Ready for LLM Analysis';
@@ -680,9 +700,14 @@ function setupControls() {
       };
 
     } catch (e) {
+      const cleanMsg = (e.message || '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
       statusEl.className = 'status-message active-error';
-      statusEl.innerHTML = `❌ Error fetching preview: ${escapeHtml(e.message)}`;
-      alert('Could not fetch preview: ' + e.message);
+      statusEl.innerHTML = `❌ Error fetching preview: ${escapeHtml(cleanMsg)}`;
+      if (cleanMsg.includes('age-restricted') || cleanMsg.includes('confirm your age') || cleanMsg.includes('sign in')) {
+        alert('This video is age-restricted or requires YouTube sign-in.\n\nPlease upload cookies.txt in LLM & Settings > YouTube Cookies to access this video.');
+      } else {
+        alert('Could not fetch preview: ' + cleanMsg);
+      }
     } finally {
       btn.disabled = false;
       btn.innerHTML = origHtml;
@@ -1657,6 +1682,7 @@ function setupStorageManager() {
       subTabStorage.classList.remove('active');
       if (paneLlm) paneLlm.hidden = false;
       if (paneStorage) paneStorage.hidden = true;
+      loadCookieStatus();
     };
 
     subTabStorage.onclick = () => {
@@ -1841,6 +1867,88 @@ function closeMediaModal() {
   const body = $('media-preview-body');
   if (modal) modal.hidden = true;
   if (body) body.innerHTML = '';
+}
+
+// -------------------------------------------------------------
+// YouTube Cookies Management
+// -------------------------------------------------------------
+async function loadCookieStatus() {
+  const badge = $('cookies-status-badge');
+  const infoText = $('cookies-info-text');
+  const deleteBtn = $('delete-cookies-btn');
+  if (!badge) return;
+
+  try {
+    const res = await api('/api/cookies/status');
+    if (res && res.configured) {
+      const sizeKb = (res.size_bytes / 1024).toFixed(1);
+      badge.className = 'badge badge-success';
+      badge.textContent = `🟢 Cookies Active (${sizeKb} KB)`;
+      if (infoText) infoText.textContent = `Active: ${res.filename} (${sizeKb} KB)`;
+      if (deleteBtn) deleteBtn.style.display = 'inline-block';
+    } else {
+      badge.className = 'badge';
+      badge.textContent = '⚪ No Cookies Configured';
+      if (infoText) infoText.textContent = 'No cookies loaded (required only for age-restricted videos)';
+      if (deleteBtn) deleteBtn.style.display = 'none';
+    }
+  } catch (e) {
+    badge.className = 'badge badge-warning';
+    badge.textContent = 'Status Unavailable';
+  }
+}
+
+function setupCookiesManager() {
+  const uploadBtn = $('upload-cookies-btn');
+  const fileInput = $('cookies-file-input');
+  const deleteBtn = $('delete-cookies-btn');
+
+  if (uploadBtn && fileInput) {
+    uploadBtn.onclick = () => fileInput.click();
+    fileInput.onchange = async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.txt')) {
+        return alert('Please select a valid .txt cookies file (Netscape format).');
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Uploading...';
+      try {
+        const resp = await fetch('/api/cookies/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || data.message || 'Upload failed');
+        alert('✅ YouTube cookies uploaded successfully! Clipiest can now process age-restricted and private videos.');
+        loadCookieStatus();
+      } catch (e) {
+        alert('❌ Error uploading cookies: ' + e.message);
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = '📁 Upload cookies.txt';
+        fileInput.value = '';
+      }
+    };
+  }
+
+  if (deleteBtn) {
+    deleteBtn.onclick = async () => {
+      if (!confirm('Remove YouTube cookies? Age-restricted videos will no longer download until you upload cookies again.')) return;
+      try {
+        await api('/api/cookies', { method: 'DELETE' });
+        alert('Cookies removed.');
+        loadCookieStatus();
+      } catch (e) {
+        alert('Error removing cookies: ' + e.message);
+      }
+    };
+  }
+
+  loadCookieStatus();
 }
 
 // -------------------------------------------------------------

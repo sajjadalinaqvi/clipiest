@@ -42,6 +42,15 @@ TMP_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOADS_DIR = (ROOT / "Downloads").resolve()
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+COOKIES_FILE = (DATA_DIR / "cookies.txt").resolve()
+
+def get_cookies_file() -> Path | None:
+    """Finds active YouTube cookies file from data/, root, or backend/."""
+    for p in [COOKIES_FILE, (ROOT / "cookies.txt").resolve(), (BACKEND_DIR / "cookies.txt").resolve()]:
+        if p.exists() and p.is_file() and p.stat().st_size > 0:
+            return p
+    return None
+
 # Server
 HOST = env("CLIPIEST_HOST", "127.0.0.1")
 PORT = int(env("CLIPIEST_PORT", "8780"))

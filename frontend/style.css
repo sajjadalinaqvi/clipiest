@@ -2092,3 +2092,46 @@ select:focus {
   color: var(--text-muted);
   padding: 40px !important;
 }
+
+/* Source Notice Banner & YouTube Cookies Styles */
+.source-notice-banner {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fde047;
+}
+
+.source-notice-banner a, .source-notice-banner button {
+  color: var(--cyan);
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.cookies-config-box {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+}
+
+.cookies-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cookies-guide-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  font-size: 13px;
+}
