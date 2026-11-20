@@ -121,6 +121,11 @@ def rank_highlights(
         e[:min(n, len(extra_excite))] = extra_excite[:n]
         sig = 0.75 * sig + 0.25 * e
 
+    # Dampen the first 15 seconds on long videos (> 60s) to avoid picking channel intro screens / logos
+    if n > 60:
+        damp_len = min(n, 15)
+        sig[:damp_len] *= np.linspace(0.15, 1.0, damp_len)
+
     width = min(n, 7)
     smooth = np.convolve(sig, np.ones(width) / width, "same")
     clip_len = min(float(length), duration)

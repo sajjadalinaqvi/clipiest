@@ -86,12 +86,16 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
             save_fn({"transcript_source": "YouTube captions" if yt_words else "AI Speech Model"})
         else:
             # Uploaded local video
-            src_file = DATA_DIR / f"{source_id}.mp4"
-            if not src_file.exists():
-                for sub in DATA_DIR.iterdir():
-                    if sub.is_dir() and (sub / f"{source_id}.mp4").exists():
-                        src_file = sub / f"{source_id}.mp4"
+            src_file = None
+            if (DATA_DIR / f"{source_id}.mp4").exists():
+                src_file = DATA_DIR / f"{source_id}.mp4"
+            else:
+                for p in DATA_DIR.rglob(f"{source_id}.mp4"):
+                    if p.is_file():
+                        src_file = p
                         break
+            if not src_file or not src_file.exists():
+                raise RuntimeError(f"Source video '{source_id}' not found in library or creator folders.")
             meta = probe_video(src_file)
             duration = meta["duration"]
             title = "Uploaded Video"
@@ -111,10 +115,10 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
         learned_weights = load_weights(DATA_DIR)
         
         if is_fast:
-            # Fast Mode: Audio-first download
+            # Fast Mode: Audio-first download (Universal YouTube, Twitch, Kick)
             save_fn({"stage": "Downloading audio track...", "progress": 0.10})
             audio_path = vdir / f"{job_id}.audio.m4a"
-            with get_ytdl({"format": "ba[ext=m4a]/ba/worst", "outtmpl": str(vdir / f"{job_id}.audio.%(ext)s")}) as y:
+            with get_ytdl({"format": "ba/b", "outtmpl": str(vdir / f"{job_id}.audio.%(ext)s")}) as y:
                 y.download([url])
             audio_file = next(f for f in vdir.glob(f"{job_id}.audio.*") if f.suffix not in (".part", ".ytdl"))
             
@@ -181,7 +185,7 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
             save_fn({"stage": "Downloading high-resolution source...", "progress": 0.15})
             if url:
                 src_tmpl = str(vdir / "source.%(ext)s")
-                with get_ytdl({"format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]", "merge_output_format": "mp4", "outtmpl": src_tmpl}) as y:
+                with get_ytdl({"format": "bv*[height<=1080]+ba/b[height<=1080]/b", "merge_output_format": "mp4", "outtmpl": src_tmpl}) as y:
                     y.download([url])
                 src_file = next(f for f in vdir.glob("source.*") if f.suffix == ".mp4")
             meta = probe_video(src_file)
@@ -293,8 +297,10 @@ def run_clip_pipeline(body: dict, state: dict, job_id: str):
                 "source": sec_file.stem,
                 "settings": {
                     "id": sec_file.stem,
-                    "start": clip_start,
-                    "end": clip_end,
+                    "start": c["start"],
+                    "end": c["end"],
+                    "slice_start": clip_start,
+                    "slice_end": clip_end,
                     "layout": layout,
                     "top": top_h,
                     "cam": cam_box,

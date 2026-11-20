@@ -438,15 +438,32 @@ def cancel_job(job_id: str):
 @app.post("/api/export")
 def manual_export(body: dict):
     source_id = str(body.get("id", ""))
+    url = str(body.get("url", "")).strip()
     src = get_source_file(source_id)
-    if not src or not src.exists():
-        raise HTTPException(400, "Source video not found. Upload or download first.")
     
-    meta = probe_video(src)
-    start = float(body.get("start", 0))
-    end = float(body.get("end", min(30, meta["duration"])))
-    if not (0 <= start < end <= meta["duration"] + 0.1):
-        raise HTTPException(400, "Invalid start/end time range.")
+    # If src does not exist locally, check if it's a URL preview or provided URL
+    if not src or not src.exists():
+        if not url and source_id:
+            folder = DATA_DIR / source_id
+            if not folder.exists():
+                for sub in DATA_DIR.iterdir():
+                    if sub.is_dir() and (sub / source_id).exists():
+                        folder = sub / source_id
+                        break
+            if folder.exists() and (folder / "source.json").exists():
+                try:
+                    s_data = json.loads((folder / "source.json").read_text(encoding="utf-8"))
+                    url = s_data.get("url", "")
+                except Exception:
+                    pass
+
+    if not src and not url:
+        raise HTTPException(400, "Source video not found. Upload a video or enter a URL first.")
+    
+    start = max(0.0, float(body.get("start", 0)))
+    end = float(body.get("end", start + 30.0))
+    if end <= start:
+        raise HTTPException(400, "End time must be greater than start time.")
     
     layout = body.get("layout", "stack")
     if layout not in LAYOUT_IDS:
@@ -455,40 +472,51 @@ def manual_export(body: dict):
     top_h = float(body.get("top", 0.32))
     caption_style = body.get("caption_style", "bounce")
     hook = str(body.get("hook", ""))
-    
-    # Calculate crop pixel rects
-    vw, vh = meta["w"], meta["h"]
+    words = body.get("words", [])
     cam_in = body.get("cam", {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.30})
     game_in = body.get("game", {"x": 0.25, "y": 0.0, "w": 0.75, "h": 1.0})
     
-    cam_rect = (
-        max(0, min(vw - 2, int(cam_in["x"] * vw))),
-        max(0, min(vh - 2, int(cam_in["y"] * vh))),
-        max(2, min(vw, int(cam_in["w"] * vw))),
-        max(2, min(vh, int(cam_in["h"] * vh)))
-    )
-    game_rect = (
-        max(0, min(vw - 2, int(game_in["x"] * vw))),
-        max(0, min(vh - 2, int(game_in["y"] * vh))),
-        max(2, min(vw, int(game_in["w"] * vw))),
-        max(2, min(vh, int(game_in["h"] * vh)))
-    )
-    
-    words = body.get("words", [])
     clip_id = uuid.uuid4().hex[:12]
-    out_dir = src.parent
-    
     job_id = f"export_{clip_id}"
-    state[job_id] = {"status": "rendering", "progress": 0.1}
+    state[job_id] = {"status": "rendering", "progress": 0.1, "stage": "Preparing export..."}
     
     def render_worker():
         try:
+            target_src = src
+            slice_start = start
+            slice_end = end
+            out_dir = DATA_DIR / "exports"
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            if not target_src or not target_src.exists():
+                from .pipeline.downloader import download_video_section
+                state[job_id] = {"status": "downloading", "progress": 0.3, "stage": "Downloading requested slice..."}
+                target_src = download_video_section(url, out_dir, f"raw_{clip_id}", start, end)
+                slice_start = 0.0
+                slice_end = min(probe_video(target_src)["duration"], end - start)
+
+            meta = probe_video(target_src)
+            vw, vh = meta["w"], meta["h"]
+            cam_rect = (
+                max(0, min(vw - 2, int(cam_in["x"] * vw))),
+                max(0, min(vh - 2, int(cam_in["y"] * vh))),
+                max(2, min(vw, int(cam_in["w"] * vw))),
+                max(2, min(vh, int(cam_in["h"] * vh)))
+            )
+            game_rect = (
+                max(0, min(vw - 2, int(game_in["x"] * vw))),
+                max(0, min(vh - 2, int(game_in["y"] * vh))),
+                max(2, min(vw, int(game_in["w"] * vw))),
+                max(2, min(vh, int(game_in["h"] * vh)))
+            )
+
+            state[job_id] = {"status": "rendering", "progress": 0.6, "stage": "Rendering vertical 9:16 video..."}
             res = render_clip(
-                src_path=src,
+                src_path=target_src,
                 out_dir=out_dir,
                 name=clip_id,
-                start=start,
-                end=end,
+                start=slice_start,
+                end=slice_end,
                 layout=layout,
                 top=top_h,
                 cam_rect=cam_rect,
@@ -497,9 +525,9 @@ def manual_export(body: dict):
                 caption_style=caption_style,
                 hook=hook
             )
-            # Save metadata json
+            
             (out_dir / f"{clip_id}.json").write_text(json.dumps({
-                "source": source_id,
+                "source": source_id or clip_id,
                 "settings": {
                     "id": source_id,
                     "start": start,
@@ -510,7 +538,8 @@ def manual_export(body: dict):
                     "game": game_in,
                     "caption_style": caption_style,
                     "hook": hook,
-                    "words": words
+                    "words": words,
+                    "source_url": url
                 },
                 "result": {**res, "status": "done"}
             }, indent=2), encoding="utf-8")

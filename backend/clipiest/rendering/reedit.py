@@ -85,9 +85,9 @@ def attach_reedit(app, data_dir: Path, state: dict):
         record = read_clip_record(data_dir, clip_id)
         settings = record["settings"]
         source_id = record["source"]
-        src_p = find_file(data_dir, f"{source_id}.mp4")
+        src_p = find_file(data_dir, f"{source_id}.mp4") or find_file(data_dir, f"{clip_id}.mp4")
         if not src_p or not src_p.exists():
-            raise HTTPException(409, "Original source video is unavailable. Cannot re-edit without source.")
+            raise HTTPException(409, "Original source video or clip is unavailable. Cannot re-edit without source.")
         
         words = get_saved_words(data_dir, clip_id, record)
         meta = probe_video(src_p)

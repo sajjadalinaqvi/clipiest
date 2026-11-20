@@ -676,13 +676,19 @@ select:focus {
   border-radius: 2px;
 }
 
+/* Global hidden attribute enforcement */
+[hidden] {
+  display: none !important;
+}
+
 .canvas-container {
   position: relative;
-  background: #000;
+  background: #090b10;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border);
   aspect-ratio: 16 / 9;
+  cursor: crosshair;
 }
 
 #source-canvas {
@@ -699,7 +705,26 @@ select:focus {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  background: rgba(10, 12, 20, 0.85);
+  background: rgba(10, 12, 20, 0.88);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.canvas-placeholder[hidden] {
+  display: none !important;
+}
+
+.clip-time-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(6, 182, 212, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
 }
 
 .canvas-placeholder .icon {

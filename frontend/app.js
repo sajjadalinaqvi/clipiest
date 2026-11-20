@@ -12,6 +12,19 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds === null || seconds === undefined) return '00:00';
+  const total = Math.max(0, Math.round(seconds));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    return `${h}:${String(remM).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 // Application State
 const appState = {
   configured: false,
@@ -517,16 +530,8 @@ function setupControls() {
   });
 
   // Tools toggle (Cam vs Game)
-  $('tool-cam').onclick = () => {
-    appState.activeTool = 'cam';
-    $('tool-cam').classList.add('active');
-    $('tool-game').classList.remove('active');
-  };
-  $('tool-game').onclick = () => {
-    appState.activeTool = 'game';
-    $('tool-game').classList.add('active');
-    $('tool-cam').classList.remove('active');
-  };
+  $('tool-cam').onclick = () => setActiveTool('cam');
+  $('tool-game').onclick = () => setActiveTool('game');
 
   // Facecam height slider
   $('top-h-slider').oninput = (e) => {
@@ -758,8 +763,14 @@ async function loadStoryboard(sourceId) {
 }
 
 // -------------------------------------------------------------
-// Interactive Canvas Drawing & Dragging
+// Interactive Canvas Drawing & Dragging (Move, Resize Handles, Draw)
 // -------------------------------------------------------------
+function setActiveTool(tool) {
+  appState.activeTool = tool;
+  if ($('tool-cam')) $('tool-cam').classList.toggle('active', tool === 'cam');
+  if ($('tool-game')) $('tool-game').classList.toggle('active', tool === 'game');
+}
+
 function setupCanvasEvents() {
   function getCanvasCoords(e) {
     const rect = sourceCanvas.getBoundingClientRect();
@@ -769,19 +780,102 @@ function setupCanvasEvents() {
     };
   }
 
-  sourceCanvas.onpointerdown = (e) => {
-    appState.dragInfo = getCanvasCoords(e);
-    sourceCanvas.setPointerCapture(e.pointerId);
-  };
+  function getHitMode(pt) {
+    const rect = sourceCanvas.getBoundingClientRect();
+    const handleDistX = 14 / rect.width;
+    const handleDistY = 14 / rect.height;
+
+    // Check active box corners first
+    const activeBox = appState.rect[appState.activeTool];
+    const bx = activeBox.x, by = activeBox.y, bw = activeBox.w, bh = activeBox.h;
+
+    if (Math.abs(pt.x - (bx + bw)) < handleDistX && Math.abs(pt.y - (by + bh)) < handleDistY) return 'resize-br';
+    if (Math.abs(pt.x - bx) < handleDistX && Math.abs(pt.y - (by + bh)) < handleDistY) return 'resize-bl';
+    if (Math.abs(pt.x - (bx + bw)) < handleDistX && Math.abs(pt.y - by) < handleDistY) return 'resize-tr';
+    if (Math.abs(pt.x - bx) < handleDistX && Math.abs(pt.y - by) < handleDistY) return 'resize-tl';
+
+    // Check inside active box
+    if (pt.x >= bx && pt.x <= bx + bw && pt.y >= by && pt.y <= by + bh) {
+      return 'move';
+    }
+
+    // Check inside the OTHER box (clicking it selects and switches to it)
+    const otherTool = appState.activeTool === 'cam' ? 'game' : 'cam';
+    const otherBox = appState.rect[otherTool];
+    if (pt.x >= otherBox.x && pt.x <= otherBox.x + otherBox.w && pt.y >= otherBox.y && pt.y <= otherBox.y + otherBox.h) {
+      return `switch-${otherTool}`;
+    }
+
+    return 'draw';
+  }
 
   sourceCanvas.onpointermove = (e) => {
-    if (!appState.dragInfo) return;
-    const cur = getCanvasCoords(e);
-    const box = appState.rect[appState.activeTool];
-    box.x = Math.min(cur.x, appState.dragInfo.x);
-    box.y = Math.min(cur.y, appState.dragInfo.y);
-    box.w = Math.max(0.02, Math.abs(cur.x - appState.dragInfo.x));
-    box.h = Math.max(0.02, Math.abs(cur.y - appState.dragInfo.y));
+    const pt = getCanvasCoords(e);
+    if (!appState.dragInfo) {
+      const mode = getHitMode(pt);
+      if (mode === 'resize-br' || mode === 'resize-tl') sourceCanvas.style.cursor = 'nwse-resize';
+      else if (mode === 'resize-bl' || mode === 'resize-tr') sourceCanvas.style.cursor = 'nesw-resize';
+      else if (mode === 'move') sourceCanvas.style.cursor = 'move';
+      else if (mode.startsWith('switch')) sourceCanvas.style.cursor = 'pointer';
+      else sourceCanvas.style.cursor = 'crosshair';
+      return;
+    }
+
+    const { mode, startPt, origBox, tool } = appState.dragInfo;
+    const box = appState.rect[tool];
+    const dx = pt.x - startPt.x;
+    const dy = pt.y - startPt.y;
+
+    if (mode === 'move') {
+      box.x = Math.max(0, Math.min(1 - origBox.w, origBox.x + dx));
+      box.y = Math.max(0, Math.min(1 - origBox.h, origBox.y + dy));
+    } else if (mode === 'resize-br') {
+      box.w = Math.max(0.04, Math.min(1 - box.x, origBox.w + dx));
+      box.h = Math.max(0.04, Math.min(1 - box.y, origBox.h + dy));
+    } else if (mode === 'resize-tl') {
+      const right = origBox.x + origBox.w;
+      const bottom = origBox.y + origBox.h;
+      box.x = Math.max(0, Math.min(right - 0.04, origBox.x + dx));
+      box.y = Math.max(0, Math.min(bottom - 0.04, origBox.y + dy));
+      box.w = right - box.x;
+      box.h = bottom - box.y;
+    } else if (mode === 'resize-tr') {
+      const bottom = origBox.y + origBox.h;
+      box.w = Math.max(0.04, Math.min(1 - box.x, origBox.w + dx));
+      box.y = Math.max(0, Math.min(bottom - 0.04, origBox.y + dy));
+      box.h = bottom - box.y;
+    } else if (mode === 'resize-bl') {
+      const right = origBox.x + origBox.w;
+      box.x = Math.max(0, Math.min(right - 0.04, origBox.x + dx));
+      box.w = right - box.x;
+      box.h = Math.max(0.04, Math.min(1 - box.y, origBox.h + dy));
+    } else if (mode === 'draw') {
+      box.x = Math.min(pt.x, startPt.x);
+      box.y = Math.min(pt.y, startPt.y);
+      box.w = Math.max(0.04, Math.abs(pt.x - startPt.x));
+      box.h = Math.max(0.04, Math.abs(pt.y - startPt.y));
+    }
+  };
+
+  sourceCanvas.onpointerdown = (e) => {
+    const pt = getCanvasCoords(e);
+    let mode = getHitMode(pt);
+
+    if (mode.startsWith('switch-')) {
+      const targetTool = mode.replace('switch-', '');
+      setActiveTool(targetTool);
+      mode = 'move';
+    }
+
+    const curTool = appState.activeTool;
+    const box = appState.rect[curTool];
+    appState.dragInfo = {
+      mode,
+      startPt: pt,
+      origBox: { ...box },
+      tool: curTool
+    };
+    sourceCanvas.setPointerCapture(e.pointerId);
   };
 
   sourceCanvas.onpointerup = () => { appState.dragInfo = null; };
@@ -789,38 +883,98 @@ function setupCanvasEvents() {
 }
 
 function renderLoop() {
-  // 1. Draw Source Canvas
-  sourceCtx.fillStyle = '#000';
-  sourceCtx.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-
-  if (appState.currentImageSource) {
-    sourceCtx.drawImage(appState.currentImageSource, 0, 0, sourceCanvas.width, sourceCanvas.height);
-  }
-
-  // Draw crop rectangles
   const cw = sourceCanvas.width;
   const ch = sourceCanvas.height;
 
-  // Gameplay box (Cyan)
-  const g = appState.rect.game;
-  sourceCtx.strokeStyle = '#06b6d4';
-  sourceCtx.lineWidth = 3;
-  sourceCtx.strokeRect(g.x * cw, g.y * ch, g.w * cw, g.h * ch);
-  sourceCtx.fillStyle = 'rgba(6, 182, 212, 0.15)';
-  sourceCtx.fillRect(g.x * cw, g.y * ch, g.w * cw, g.h * ch);
+  // 1. Draw Source Canvas background / image
+  sourceCtx.fillStyle = '#0a0d14';
+  sourceCtx.fillRect(0, 0, cw, ch);
 
-  // Facecam box (Magenta)
+  if (appState.currentImageSource) {
+    sourceCtx.drawImage(appState.currentImageSource, 0, 0, cw, ch);
+  } else {
+    // Subtle grid pattern for framing studio before video load
+    sourceCtx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    sourceCtx.lineWidth = 1;
+    for (let x = 60; x < cw; x += 60) {
+      sourceCtx.beginPath(); sourceCtx.moveTo(x, 0); sourceCtx.lineTo(x, ch); sourceCtx.stroke();
+    }
+    for (let y = 60; y < ch; y += 60) {
+      sourceCtx.beginPath(); sourceCtx.moveTo(0, y); sourceCtx.lineTo(cw, y); sourceCtx.stroke();
+    }
+    sourceCtx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    sourceCtx.font = '600 13px Plus Jakarta Sans, sans-serif';
+    sourceCtx.textAlign = 'center';
+    sourceCtx.fillText('Interactive 16:9 Framing Studio · Drag handles to position Gameplay & Facecam', cw / 2, ch / 2 - 8);
+  }
+
+  // Draw Gameplay box (Cyan)
+  const g = appState.rect.game;
+  const gx = g.x * cw, gy = g.y * ch, gw = g.w * cw, gh = g.h * ch;
+  const isGameActive = appState.activeTool === 'game';
+
+  sourceCtx.strokeStyle = '#06b6d4';
+  sourceCtx.lineWidth = isGameActive ? 3 : 1.5;
+  sourceCtx.strokeRect(gx, gy, gw, gh);
+  sourceCtx.fillStyle = isGameActive ? 'rgba(6, 182, 212, 0.18)' : 'rgba(6, 182, 212, 0.08)';
+  sourceCtx.fillRect(gx, gy, gw, gh);
+
+  // Gameplay Label
+  sourceCtx.fillStyle = isGameActive ? '#06b6d4' : 'rgba(6, 182, 212, 0.7)';
+  sourceCtx.fillRect(gx, Math.max(0, gy - 20), Math.min(gw, 140), 20);
+  sourceCtx.fillStyle = '#000';
+  sourceCtx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
+  sourceCtx.textAlign = 'left';
+  sourceCtx.fillText(isGameActive ? '★ GAMEPLAY (ACTIVE)' : 'GAMEPLAY', gx + 6, Math.max(14, gy - 6));
+
+  if (isGameActive) {
+    drawHandles(sourceCtx, gx, gy, gw, gh, '#06b6d4');
+  }
+
+  // Draw Facecam box (Magenta)
   const c = appState.rect.cam;
+  const cx = c.x * cw, cy = c.y * ch, cw_box = c.w * cw, ch_box = c.h * ch;
+  const isCamActive = appState.activeTool === 'cam';
+
   sourceCtx.strokeStyle = '#ec4899';
-  sourceCtx.lineWidth = 3;
-  sourceCtx.strokeRect(c.x * cw, c.y * ch, c.w * cw, c.h * ch);
-  sourceCtx.fillStyle = 'rgba(236, 72, 153, 0.2)';
-  sourceCtx.fillRect(c.x * cw, c.y * ch, c.w * cw, c.h * ch);
+  sourceCtx.lineWidth = isCamActive ? 3 : 1.5;
+  sourceCtx.strokeRect(cx, cy, cw_box, ch_box);
+  sourceCtx.fillStyle = isCamActive ? 'rgba(236, 72, 153, 0.22)' : 'rgba(236, 72, 153, 0.09)';
+  sourceCtx.fillRect(cx, cy, cw_box, ch_box);
+
+  // Facecam Label
+  sourceCtx.fillStyle = isCamActive ? '#ec4899' : 'rgba(236, 72, 153, 0.7)';
+  sourceCtx.fillRect(cx, Math.max(0, cy - 20), Math.min(cw_box, 140), 20);
+  sourceCtx.fillStyle = '#fff';
+  sourceCtx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
+  sourceCtx.textAlign = 'left';
+  sourceCtx.fillText(isCamActive ? '★ FACECAM (ACTIVE)' : 'FACECAM', cx + 6, Math.max(14, cy - 6));
+
+  if (isCamActive) {
+    drawHandles(sourceCtx, cx, cy, cw_box, ch_box, '#ec4899');
+  }
 
   // 2. Draw 9:16 Vertical Phone Simulator
   drawPhonePreview();
 
   requestAnimationFrame(renderLoop);
+}
+
+function drawHandles(ctx, x, y, w, h, color) {
+  const hs = 9;
+  const corners = [
+    [x, y],
+    [x + w, y],
+    [x, y + h],
+    [x + w, y + h]
+  ];
+  corners.forEach(([px, py]) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.fillRect(px - hs / 2, py - hs / 2, hs, hs);
+    ctx.strokeRect(px - hs / 2, py - hs / 2, hs, hs);
+  });
 }
 
 function drawPhonePreview() {
@@ -943,12 +1097,14 @@ async function triggerMakeClips() {
 }
 
 async function triggerManualExport() {
-  if (!appState.sourceId) {
-    return alert('Upload a video file first to export a custom slice.');
+  const url = $('video-url').value.trim();
+  if (!appState.sourceId && !url) {
+    return alert('Enter a video URL or upload a file first to export a custom slice.');
   }
 
   const payload = {
-    id: appState.sourceId,
+    id: appState.sourceId || undefined,
+    url: url || undefined,
     start: Number($('time-start').value),
     end: Number($('time-end').value),
     layout: appState.layout,
@@ -999,19 +1155,27 @@ function renderClipCards(clips, container) {
     const card = document.createElement('div');
     card.className = 'clip-card';
     const videoSrc = clip.file?.startsWith('/') ? clip.file : `/media/${clip.file}`;
+    const startSec = Number(clip.start || 0);
+    const endSec = Number(clip.end || (startSec + 30));
+    const durSec = Math.max(1, Math.round(endSec - startSec));
+
     card.innerHTML = `
       <div class="clip-video-wrap">
         <video src="${videoSrc}" controls preload="metadata"></video>
       </div>
       <div class="clip-info">
         <div class="clip-title-row">
-          <h4>${clip.title || 'Clip'}</h4>
+          <h4>${escapeHtml(clip.title || 'Clip')}</h4>
           <span class="viral-badge">Score: ${clip.score || 75}</span>
         </div>
-        ${clip.hook ? `<div class="clip-hook">"${clip.hook}"</div>` : ''}
+        <div class="clip-time-row" style="margin: 4px 0 8px;">
+          <span class="clip-time-badge">⏱ ${formatTime(startSec)} - ${formatTime(endSec)} (${durSec}s)</span>
+        </div>
+        ${clip.hook ? `<div class="clip-hook">"${escapeHtml(clip.hook)}"</div>` : ''}
         <div class="clip-actions">
           <a href="${videoSrc}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
           <a href="/text/${clip.id}/srt" class="btn-secondary btn-sm">↓ SRT</a>
+          <button type="button" class="btn-secondary btn-sm select-clip-btn">🎯 Select Slice</button>
         </div>
         <div class="stars-rating" data-id="${clip.id}">
           <span style="font-size:11px;color:var(--text-muted);margin-right:6px;">Tune AI:</span>
@@ -1020,9 +1184,24 @@ function renderClipCards(clips, container) {
       </div>
     `;
 
+    const selectSlice = () => {
+      $('time-start').value = Math.round(startSec * 10) / 10;
+      $('time-end').value = Math.round(endSec * 10) / 10;
+      if (clip.hook) $('hook-input').value = clip.hook;
+      $('source-status-badge').textContent = `Slice: ${formatTime(startSec)} - ${formatTime(endSec)}`;
+      document.querySelectorAll('.clip-card').forEach(c => c.style.borderColor = 'var(--border)');
+      card.style.borderColor = 'var(--cyan)';
+    };
+
+    card.querySelector('.select-clip-btn').onclick = (e) => {
+      e.stopPropagation();
+      selectSlice();
+    };
+
     // Star rating
     card.querySelectorAll('.star-btn').forEach(star => {
-      star.onclick = async () => {
+      star.onclick = async (e) => {
+        e.stopPropagation();
         const rating = Number(star.dataset.star);
         await api('/api/feedback', {
           method: 'POST',
@@ -1134,10 +1313,13 @@ async function loadLibrary() {
         </div>
         <div class="clip-info">
           <div class="clip-title-row">
-            <h4>${clip.title}</h4>
+            <h4>${escapeHtml(clip.title)}</h4>
             <span class="viral-badge">${clip.layout}</span>
           </div>
-          <small style="color:var(--text-muted);font-size:11px;">${new Date(clip.created * 1000).toLocaleString()}</small>
+          <div style="display:flex;align-items:center;gap:8px;margin: 4px 0 6px;">
+            <span class="clip-time-badge">⏱ ${formatTime(clip.start || 0)} - ${formatTime(clip.end || 30)}</span>
+            <small style="color:var(--text-muted);font-size:11px;">${new Date(clip.created * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+          </div>
           <div class="clip-actions">
             <a href="${clip.file}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
             <a href="${clip.srt}" class="btn-secondary btn-sm">↓ SRT</a>
