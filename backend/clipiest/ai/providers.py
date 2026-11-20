@@ -47,7 +47,7 @@ def explain_ai_error(e: Exception, provider: str = "AI") -> str:
     return str(e)
 
 def _clean_json_text(raw: str) -> str:
-    """Strips <think> tags, markdown blocks, and surrounding conversational filler."""
+    """Strips <think> tags, markdown blocks, trailing commas, and repairs unclosed LLM JSON."""
     text = str(raw or "").strip()
     # Strip <think>...</think> reasoning blocks common in LM Studio (DeepSeek-R1, Qwen)
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -55,10 +55,23 @@ def _clean_json_text(raw: str) -> str:
     m_code = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
     if m_code:
         text = m_code.group(1).strip()
-    # Extract from outermost { or [ to matching } or ]
-    m = re.search(r"(\{|\[)[\s\S]*(\}|\])", text)
+    # Fix missing comma between objects: } { -> }, {
+    text = re.sub(r"}\s*\n*\s*{", "},{", text)
+    # Strip trailing commas before closing braces
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    # Extract from outermost { or [
+    m = re.search(r"(\{|\[)[\s\S]*", text)
     if m:
         text = m.group(0).strip()
+    # Repair unclosed array if LLM output was truncated near completion
+    if text.startswith("[") and not text.endswith("]"):
+        last_brace = text.rfind("}")
+        if last_brace != -1:
+            text = text[:last_brace + 1] + "]"
+    elif text.startswith("{") and not text.endswith("}"):
+        last_brace = text.rfind("}")
+        if last_brace != -1:
+            text = text[:last_brace + 1]
     return text
 
 def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", model: str = "") -> dict:
@@ -235,7 +248,7 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
     last_ex = None
     for target in urls_to_attempt:
         try:
-            with httpx.Client(timeout=httpx.Timeout(60.0, connect=1.0)) as client:
+            with httpx.Client(timeout=httpx.Timeout(120.0, connect=2.0)) as client:
                 target_model = payload["model"]
                 # Auto-align target model if local provider has loaded models
                 if allow_fallback and any(h in target for h in ("localhost", "127.0.0.1")):
@@ -263,8 +276,9 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
             continue
         except Exception as e:
             last_ex = e
+            # Only failover to another port on genuine connection refusals, never on ReadTimeout (which means server is busy generating)
             err_lower = str(e).lower()
-            if any(term in err_lower for term in ("connect", "refused", "timed out", "timeout", "10061", "reset", "failed to establish")):
+            if any(term in err_lower for term in ("refused", "10061", "failed to establish", "connection refused")):
                 continue
             raise e
             

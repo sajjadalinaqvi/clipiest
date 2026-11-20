@@ -372,8 +372,8 @@ Format strictly as a JSON array of objects:
 
     for win in selected_windows:
         a, b, chunk = win["a"], win["b"], win["chunk"]
-        # Intelligently cluster around climaxes, screams, and reaction lines (up to 5,000 characters)
-        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=5000)
+        # Intelligently cluster around climaxes, screams, and reaction lines (up to 2,500 characters for fast LLM inference)
+        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=2500)
         prompt = (
             HEAD.format(title=_clean_text(title, 80) or "Video", uploader=_clean_text(uploader, 50) or "Channel", n=max_clips, game_rule=game_rule)
             + RULES.format(n=max_clips, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
@@ -381,7 +381,7 @@ Format strictly as a JSON array of objects:
         
         try:
             log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.65)
+            raw_res = ask_llm(prompt, max_tokens=600, temperature=0.65)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
