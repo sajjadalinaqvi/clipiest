@@ -132,14 +132,26 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertIn("total", data)
         file_names = [f["name"] for f in data["files"]]
         self.assertIn("test_dummy.txt", file_names)
+        # Sensitive and config files must NEVER be exposed in storage list
+        self.assertNotIn("config.json", file_names)
+        self.assertNotIn("cookies.txt", file_names)
 
-        # 2. POST /api/storage/delete
+        # 2. POST /api/storage/delete on protected file should be blocked
+        cfg_file = DATA_DIR / "config.json"
+        if not cfg_file.exists():
+            cfg_file.write_text("{}", encoding="utf-8")
+        prot_del_res = self.client.post("/api/storage/delete", json={"path": "config.json"})
+        self.assertEqual(prot_del_res.status_code, 200)
+        self.assertEqual(prot_del_res.json().get("deleted"), 0)
+        self.assertTrue(cfg_file.exists())
+
+        # 3. POST /api/storage/delete on safe file should succeed
         del_res = self.client.post("/api/storage/delete", json={"path": "test_dummy.txt"})
         self.assertEqual(del_res.status_code, 200)
         self.assertTrue(del_res.json().get("success"))
         self.assertFalse(test_file.exists())
 
-        # 3. POST /api/storage/clean-tmp
+        # 4. POST /api/storage/clean-tmp
         clean_res = self.client.post("/api/storage/clean-tmp")
         self.assertEqual(clean_res.status_code, 200)
         self.assertTrue(clean_res.json().get("success"))

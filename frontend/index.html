@@ -12,7 +12,7 @@
     rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="alternate icon" type="image/png" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2.1">
 </head>
 
 <body class="theme-dark">
@@ -596,6 +596,14 @@
               </div>
             </div>
 
+            <!-- Safe Storage & Protection Banner -->
+            <div class="storage-lock-banner">
+              <span class="lock-icon">🔒</span>
+              <div class="lock-text">
+                <strong>Protected Storage Active:</strong> Sensitive configurations (<code>config.json</code>, <code>cookies.txt</code>, creator profiles, and AI models) are locked and hidden. Only disposable video clips, slices, preview caches, and temporary renders can be managed or cleared.
+              </div>
+            </div>
+
             <!-- Storage Metrics Cards -->
             <div class="telemetry-grid" style="margin-bottom: 20px;">
               <div class="metric-card">
@@ -782,7 +790,7 @@
           <p>Clipiest requires an LLM to evaluate gaming highlights, detect viral hooks, and score comedic/clutch
             moments. Set up your local LM Studio, Ollama, or API key to unlock the studio.</p>
         </div>
-        <button type="button" id="cfg-close-btn" class="btn-close" aria-label="Close" title="Back to Studio">&times;</button>
+        <button type="button" id="cfg-close-btn" class="btn-close" onclick="closeConfigModal(true)" aria-label="Close" title="Close">&times;</button>
       </div>
 
       <div class="cfg-form">
@@ -881,7 +889,6 @@
         <div id="cfg-status-msg" class="cfg-status-box" hidden></div>
 
         <div class="cfg-actions">
-          <button type="button" id="cfg-back-btn" class="btn-ghost" style="margin-right: auto;">← Back to Studio</button>
           <button type="button" id="cfg-test-btn" class="btn-secondary">⚡ Test LLM Connection</button>
           <button type="button" id="cfg-save-btn" class="btn-primary btn-glow">Save &amp; Unlock Clipiest 🚀</button>
         </div>
@@ -907,7 +914,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2.1"></script>
 </body>
 
 </html>

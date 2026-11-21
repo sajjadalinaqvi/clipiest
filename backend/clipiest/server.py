@@ -1003,9 +1003,39 @@ def api_download_file(filename: str):
             )
     raise HTTPException(404, "File not found for download.")
 
+PROTECTED_STORAGE_FILENAMES = {
+    "config.json",
+    "cookies.txt",
+    "weights.json",
+    "feedback.jsonl",
+    "creators.json",
+    "creator.json",
+    "profile.json",
+    "ai.json",
+    "CACHEDIR.TAG",
+}
+
+PROTECTED_STORAGE_DIRS = {
+    "models",
+    ".git",
+    ".locks",
+}
+
+def is_protected_storage_file(p: Path) -> bool:
+    """Returns True if the file is a sensitive system configuration or protected model file."""
+    if p.name in PROTECTED_STORAGE_FILENAMES:
+        return True
+    if any(part in PROTECTED_STORAGE_DIRS for part in p.parts):
+        return True
+    if p.suffix.lower() in (".env", ".key", ".token", ".py", ".pyc"):
+        return True
+    if "creators" in p.parts and p.suffix.lower() == ".json":
+        return True
+    return False
+
 @app.get("/api/storage/files")
 def api_get_storage_files():
-    """Step 5: Lists all files in the data directory with metadata."""
+    """Step 5: Lists only safe disposable media & temp files in the data directory (sensitive configs locked & hidden)."""
     import datetime
     items = []
     def cat_for(ext):
@@ -1018,7 +1048,9 @@ def api_get_storage_files():
         return "other"
 
     for p in DATA_DIR.rglob("*"):
-        if p.is_file() and not any(part in (".git", "models") for part in p.parts):
+        if p.is_file():
+            if is_protected_storage_file(p):
+                continue
             try:
                 st = p.stat()
                 rel = p.relative_to(DATA_DIR).as_posix()
@@ -1031,7 +1063,8 @@ def api_get_storage_files():
                     "size_bytes": st.st_size,
                     "size_formatted": f"{size_mb:.2f} MB" if size_mb >= 0.1 else f"{round(st.st_size / 1024, 1)} KB",
                     "modified": mtime,
-                    "url": f"/media/{rel}"
+                    "url": f"/media/{rel}",
+                    "protected": False
                 })
             except OSError:
                 pass
@@ -1040,13 +1073,15 @@ def api_get_storage_files():
 
 @app.post("/api/storage/delete")
 def api_delete_storage_file(body: dict):
-    """Step 5: Manually deletes specified file(s) from data folder."""
+    """Step 5: Manually deletes specified file(s) from data folder, strictly enforcing hard-lock on sensitive configs."""
     rel_path = str(body.get("path", "")).strip()
     files = body.get("files") or ([rel_path] if rel_path else [])
     deleted_count = 0
     for f in files:
         target = (DATA_DIR / f).resolve()
         if DATA_DIR in target.parents and target.exists() and target.is_file():
+            if is_protected_storage_file(target):
+                continue
             try:
                 target.unlink(missing_ok=True)
                 deleted_count += 1

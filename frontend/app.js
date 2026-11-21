@@ -193,11 +193,12 @@ function openConfigModal() {
   $('cfg-status-msg').hidden = true;
 }
 
-function closeConfigModal(force = false) {
-  if (!force && !appState.configured) return;
-  $('setup-gate-modal').hidden = true;
+function closeConfigModal(force = true) {
+  const modal = document.getElementById('setup-gate-modal');
+  if (modal) modal.hidden = true;
   document.querySelector('.app-layout')?.classList.remove('app-locked');
 }
+window.closeConfigModal = closeConfigModal;
 
 async function checkInitialConfiguration() {
   try {
@@ -384,9 +385,15 @@ function setupConfigurationEvents() {
   if ($('tab-cfg-open-modal-btn')) $('tab-cfg-open-modal-btn').onclick = openConfigModal;
   if ($('settings-reconfigure-btn')) $('settings-reconfigure-btn').onclick = openConfigModal;
 
-  // Back & Close buttons
-  if ($('cfg-back-btn')) $('cfg-back-btn').onclick = () => closeConfigModal(true);
-  if ($('cfg-close-btn')) $('cfg-close-btn').onclick = () => closeConfigModal(true);
+  // Close Cross button
+  const cfgClose = document.getElementById('cfg-close-btn');
+  if (cfgClose) {
+    cfgClose.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeConfigModal(true);
+    };
+  }
 
   // Click outside modal card to close
   const setupModal = $('setup-gate-modal');
@@ -1994,8 +2001,11 @@ function renderStorageTable() {
 
   const catFilter = appState.storageCategoryFilter || 'all';
   const query = appState.storageSearchQuery || '';
+  const PROTECTED_FILENAMES = ['config.json', 'cookies.txt', 'weights.json', 'feedback.jsonl', 'creators.json', 'creator.json', 'profile.json', 'ai.json'];
 
   const filtered = appState.storageFiles.filter(f => {
+    // Never show sensitive or config files
+    if (f.protected || PROTECTED_FILENAMES.includes((f.name || '').toLowerCase())) return false;
     if (catFilter !== 'all' && f.category !== catFilter) return false;
     if (query && !f.name.toLowerCase().includes(query) && !f.rel_path.toLowerCase().includes(query)) return false;
     return true;
