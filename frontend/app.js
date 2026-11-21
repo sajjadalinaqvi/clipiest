@@ -193,10 +193,10 @@ function openConfigModal() {
   $('cfg-status-msg').hidden = true;
 }
 
-function closeConfigModal() {
-  if (!appState.configured) return;
+function closeConfigModal(force = false) {
+  if (!force && !appState.configured) return;
   $('setup-gate-modal').hidden = true;
-  document.querySelector('.app-layout').classList.remove('app-locked');
+  document.querySelector('.app-layout')?.classList.remove('app-locked');
 }
 
 async function checkInitialConfiguration() {
@@ -383,6 +383,27 @@ function setupConfigurationEvents() {
   $('reopen-llm-btn').onclick = openConfigModal;
   if ($('tab-cfg-open-modal-btn')) $('tab-cfg-open-modal-btn').onclick = openConfigModal;
   if ($('settings-reconfigure-btn')) $('settings-reconfigure-btn').onclick = openConfigModal;
+
+  // Back & Close buttons
+  if ($('cfg-back-btn')) $('cfg-back-btn').onclick = () => closeConfigModal(true);
+  if ($('cfg-close-btn')) $('cfg-close-btn').onclick = () => closeConfigModal(true);
+
+  // Click outside modal card to close
+  const setupModal = $('setup-gate-modal');
+  if (setupModal) {
+    setupModal.addEventListener('click', (e) => {
+      if (e.target === setupModal) {
+        closeConfigModal(true);
+      }
+    });
+  }
+
+  // Escape key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('setup-gate-modal').hidden) {
+      closeConfigModal(true);
+    }
+  });
 }
 
 // -------------------------------------------------------------
