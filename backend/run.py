@@ -17,7 +17,10 @@ def main():
     print(f" AI Provider:   {AI_PROVIDER}")
     print("=" * 60)
     print("Starting server... Press Ctrl+C to stop.\n")
-    uvicorn.run("clipiest.server:app", host=HOST, port=PORT, reload=False, access_log=True)
+    try:
+        uvicorn.run("clipiest.server:app", host=HOST, port=PORT, reload=False, access_log=True)
+    except (KeyboardInterrupt, SystemExit):
+        print("\n[Clipiest] Server stopped cleanly.")
 
 if __name__ == "__main__":
     main()

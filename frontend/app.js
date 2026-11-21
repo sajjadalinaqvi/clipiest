@@ -189,13 +189,21 @@ async function init() {
 // Configuration & Setup Gate
 // -------------------------------------------------------------
 function openConfigModal() {
-  $('setup-gate-modal').hidden = false;
-  $('cfg-status-msg').hidden = true;
+  const modal = document.getElementById('setup-gate-modal');
+  if (modal) {
+    modal.hidden = false;
+    modal.style.display = 'flex';
+  }
+  const statusMsg = document.getElementById('cfg-status-msg');
+  if (statusMsg) statusMsg.hidden = true;
 }
 
 function closeConfigModal(force = true) {
   const modal = document.getElementById('setup-gate-modal');
-  if (modal) modal.hidden = true;
+  if (modal) {
+    modal.hidden = true;
+    modal.style.display = 'none';
+  }
   document.querySelector('.app-layout')?.classList.remove('app-locked');
 }
 window.closeConfigModal = closeConfigModal;

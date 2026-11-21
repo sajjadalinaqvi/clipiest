@@ -13,6 +13,8 @@ import threading
 import subprocess
 import re
 import urllib.request
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -42,7 +44,14 @@ from .live.session import LiveClipManager
 from .storage.manager import get_disk_info, open_folder_in_os
 from . import creators
 
-app = FastAPI(title="Clipiest API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        yield
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass
+
+app = FastAPI(title="Clipiest API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -262,6 +271,14 @@ async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Fo
         meta = probe_video(target_path)
         if creator:
             creators.log_creator_event(creator, f"Uploaded video '{file.filename}' ({round(meta.get('duration', 0))}s)", action="upload")
+    except asyncio.CancelledError:
+        target_path.unlink(missing_ok=True)
+        try:
+            if not creator:
+                vdir.rmdir()
+        except OSError:
+            pass
+        raise
     except Exception as e:
         target_path.unlink(missing_ok=True)
         try:
@@ -270,6 +287,11 @@ async def upload_video(file: UploadFile = File(...), creator: Optional[str] = Fo
         except OSError:
             pass
         raise HTTPException(400, f"Invalid or unreadable video file: {e}")
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
         
     return {
         "id": source_id,
@@ -1130,17 +1152,23 @@ def get_cookies_status():
 
 @app.post("/api/cookies/upload")
 async def upload_cookies(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".txt"):
-        raise HTTPException(400, "Please upload a valid .txt cookie file (Netscape format).")
-    content = await file.read()
-    if len(content) < 10:
-        raise HTTPException(400, "Cookie file is empty or invalid.")
-    COOKIES_FILE.write_bytes(content)
-    return {
-        "success": True,
-        "message": "YouTube cookies successfully saved.",
-        "size_bytes": len(content)
-    }
+    try:
+        if not file.filename.lower().endswith(".txt"):
+            raise HTTPException(400, "Please upload a valid .txt cookie file (Netscape format).")
+        content = await file.read()
+        if len(content) < 10:
+            raise HTTPException(400, "Cookie file is empty or invalid.")
+        COOKIES_FILE.write_bytes(content)
+        return {
+            "success": True,
+            "message": "YouTube cookies successfully saved.",
+            "size_bytes": len(content)
+        }
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
 
 @app.delete("/api/cookies")
 def delete_cookies():
