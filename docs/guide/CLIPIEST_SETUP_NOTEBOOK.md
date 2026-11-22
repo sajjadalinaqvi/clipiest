@@ -2,10 +2,13 @@
 # CLIPIEST: FROM LINK TO CLIP.
 
 > **Install it. Connect local AI. Paste a video. Export a vertical clip.**  
-> *Complete English Guide — GTA VI Vice City Edition (Light Theme #f5f7f7)*  
+> *Complete English Guide — GTA VI Vice City Edition (Light Theme #f5f7f7 — A4 Cards)*  
 > *Author: Sajjad Ali Naqvi | Date: November 2026 | Desktop Edition*  
 > *Typography: Official GTA Display Font (Pricedown / Chalet Bold) & Vice City Neons*  
-> *100% Free & Open-Source AI Video Clipping Engine*
+> *Format: Standard ISO 216 A4 Cards (210 × 297 mm, 794 × 1123 px)*  
+> *100% Free & Open-Source AI Video Clipping Engine*  
+> 
+> 📄 **Live Canva Design (Official A4 Sized Cards):** [Open in Canva Studio](https://canva.link/z47fizkxd4g7fee) | [View Link](https://www.canva.com/d/_Me0HZpCcnMoz-f)
 
 <div align="center" style="background: #f5f7f7; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0;">
   <img src="gta_vi_logo.png" alt="Grand Theft Auto VI Logo" width="340" />
