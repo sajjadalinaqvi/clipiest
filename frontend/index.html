@@ -178,44 +178,47 @@
             <h3>AI Video Analysis &amp; Viral Moment Scouting</h3>
           </div>
 
-          <div class="llm-scout-banner" id="llm-scout-banner">
-            <div class="scout-banner-left">
-              <div class="scout-status-row">
-                <span class="scout-lbl">LLM CONNECTION STATUS:</span>
-                <span id="llm-status-pill" class="pill-badge pill-disconnected">● Checking LLM...</span>
-                <button type="button" id="scout-configure-llm-btn" class="btn-ghost btn-xs">⚙️ LLM Settings</button>
+          <div class="scout-cards-row">
+            <!-- Left Card: Custom AI Instructions for LLM (Optional) -->
+            <div class="scout-card scout-instructions-box" id="scout-instructions-box">
+              <div class="scout-instructions-header">
+                <label for="scout-instructions-input" class="scout-lbl">
+                  <span>💬 Custom AI Instructions for LLM (Optional):</span>
+                </label>
+                <span class="scout-instructions-hint">Focus on creator reactions, chat beef, wild stories, roasts, etc.</span>
               </div>
-              <p class="scout-desc">
-                When fetch or upload is complete, start the AI analysis. Clipiest will analyze speech density, energy
-                spikes, and narrative hooks using your connected LLM to recommend the most viral moments with exact
-                timestamps (no full video download or rendering needed yet).
-              </p>
+              <div class="scout-input-row">
+                <input type="text" id="scout-instructions-input" class="scout-instructions-input" placeholder="e.g. Focus on creator's funniest reactions, shouting, arguing with chat, emotional confessions, or shocking moments...">
+                <button type="button" class="scout-clear-btn" id="scout-instructions-clear-btn" title="Clear instructions">✕</button>
+              </div>
+              <div class="scout-instruction-tags">
+                <span class="scout-tags-lbl">Quick Presets:</span>
+                <button type="button" class="tag-chip" data-inst="Focus on the content creator's funniest facial expressions, laughs, and chaotic scream reactions">😂 Creator Screams &amp; Reactions</button>
+                <button type="button" class="tag-chip" data-inst="Extract when the creator is arguing with chat, roasting viewers, or debating">🗣️ Chat Beef &amp; Roasts</button>
+                <button type="button" class="tag-chip" data-inst="Focus on relatable storytime, crazy personal confessions, or hot takes">📖 Storytime &amp; Confessions</button>
+                <button type="button" class="tag-chip" data-inst="Find the most shocking plot twists, jump scares, and panic moments of the creator">😱 Panic &amp; Jump Scares</button>
+                <button type="button" class="tag-chip" data-inst="Highlight funny banter with friends, awkward silences, and hilarious fails">🔥 Banter &amp; Chaos</button>
+              </div>
             </div>
-            <div class="scout-banner-right">
-              <button id="start-scout-btn" class="btn-primary btn-glow" disabled>⚡ Start Video Analysis (Find Viral
-                Moments with LLM)</button>
-            </div>
-          </div>
 
-          <!-- Custom Instructions for LLM -->
-          <div class="scout-instructions-box" id="scout-instructions-box">
-            <div class="scout-instructions-header">
-              <label for="scout-instructions-input" class="scout-lbl">
-                <span>💬 Custom AI Instructions for LLM (Optional):</span>
-              </label>
-              <span class="scout-instructions-hint">Focus on creator reactions, chat beef, wild stories, roasts, etc.</span>
-            </div>
-            <div class="scout-input-row">
-              <input type="text" id="scout-instructions-input" class="input scout-instructions-input" placeholder="e.g. Focus on creator's funniest reactions, shouting, arguing with chat, emotional confessions, or shocking moments...">
-              <button type="button" class="btn-ghost btn-sm" id="scout-instructions-clear-btn" title="Clear instructions">✕</button>
-            </div>
-            <div class="scout-instruction-tags">
-              <span class="scout-tags-lbl">Quick Presets:</span>
-              <button type="button" class="tag-chip" data-inst="Focus on the content creator's funniest facial expressions, laughs, and chaotic scream reactions">😂 Creator Screams &amp; Reactions</button>
-              <button type="button" class="tag-chip" data-inst="Extract when the creator is arguing with chat, roasting viewers, or debating">🗣️ Chat Beef &amp; Roasts</button>
-              <button type="button" class="tag-chip" data-inst="Focus on relatable storytime, crazy personal confessions, or hot takes">📖 Storytime &amp; Confessions</button>
-              <button type="button" class="tag-chip" data-inst="Find the most shocking plot twists, jump scares, and panic moments of the creator">😱 Panic &amp; Jump Scares</button>
-              <button type="button" class="tag-chip" data-inst="Highlight funny banter with friends, awkward silences, and hilarious fails">🔥 Banter &amp; Chaos</button>
+            <!-- Right Card: LLM Connection Status & Video Analysis -->
+            <div class="scout-card llm-scout-banner" id="llm-scout-banner">
+              <div class="scout-banner-top">
+                <div class="scout-status-row">
+                  <span class="scout-lbl">LLM CONNECTION STATUS:</span>
+                  <span id="llm-status-pill" class="pill-badge pill-disconnected">● Checking LLM...</span>
+                  <button type="button" id="scout-configure-llm-btn" class="btn-ghost btn-xs scout-cfg-btn">⚙️ LLM Settings</button>
+                </div>
+                <p class="scout-desc">
+                  When fetch or upload is complete, start the AI analysis. Clipiest will analyze speech density, energy
+                  spikes, and narrative hooks using your connected LLM to recommend the most viral moments with exact
+                  timestamps (no full video download or rendering needed yet).
+                </p>
+              </div>
+              <div class="scout-banner-bottom">
+                <button id="start-scout-btn" class="btn-primary btn-glow" disabled>⚡ Start Video Analysis (Find Viral
+                  Moments with LLM)</button>
+              </div>
             </div>
           </div>
 
