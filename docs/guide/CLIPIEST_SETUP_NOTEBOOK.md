@@ -6,6 +6,10 @@
 > *Author: Sajjad Ali Naqvi | Date: November 2026 | Desktop Edition*  
 > *100% Free & Open-Source AI Video Clipping Engine*
 
+<div align="center">
+  <img src="gta_vi_logo.png" alt="Grand Theft Auto VI Logo" width="340" />
+</div>
+
 ![Clipiest GTA VI Edition Cover Artwork](clipiest_gta_vi_poster.jpg)
 
 ---
