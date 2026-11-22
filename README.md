@@ -29,11 +29,22 @@
 - [FFmpeg](https://ffmpeg.org/download.html) and `ffprobe` installed and on system PATH.
 - (Optional) NVIDIA GPU with CUDA for NVENC acceleration and Faster-Whisper GPU inference.
 
-### 2. Windows One-Click Start
+### 2. One-Click Start
+
+**On Windows:**
 Double-click `start_clipiest.bat` in the repository root, or run:
 ```bat
 start_clipiest.bat
 ```
+
+**On Linux / macOS:**
+Make executable and run `start_clipiest.sh`:
+```bash
+chmod +x start_clipiest.sh
+./start_clipiest.sh
+```
+
+*(Both scripts automatically detect `.venv` or `venv`, or automatically initialize `.venv` and install all requirements before launching the server).*
 
 ### 3. Manual Startup
 ```bash
@@ -146,8 +157,10 @@ Clipiest/
 │   └── test_server.py             # FastAPI API endpoint integration tests
 ├── .env.example                   # Environment configuration template
 ├── .gitignore
-├── start_clipiest.bat             # One-click Windows starter
-└── README.md
+├── requirements.txt               # Root pip dependencies
+├── start_clipiest.bat             # One-click Windows starter (auto-venv + auto-pip)
+├── start_clipiest.sh              # One-click Linux / macOS starter (auto-venv + auto-pip)
+├── README.md
 ```
 
 ---
