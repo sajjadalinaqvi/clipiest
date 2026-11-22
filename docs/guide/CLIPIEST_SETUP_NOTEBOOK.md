@@ -60,52 +60,97 @@ This field guide accompanies the recorded Clipiest workflow. Follow these five s
 ## 02 / BEFORE INSTALLATION
 ### Give the Agent a Workspace
 
-Use a terminal-enabled coding agent on the computer that will process your videos.
+Use an agentic AI assistant on the computer that will process your videos. We strongly recommend **Google Antigravity** (`Antigravity IDE` / `agy` CLI) for 100% autonomous installation and configuration.
 
-1. **Open a Coding Agent**  
-   Use Claude Code, Codex, Cursor, Gemini CLI, or any terminal-enabled AI agent with command-line execution and file-editing access. A web chat without terminal tools cannot clone repositories or install dependencies.
+<div style="display: flex; gap: 20px; align-items: flex-start;">
+<div style="flex: 2;">
 
-2. **Paste the Full Agent Prompt**  
-   Copy the 3-part prompt from Section 03 or use the included `CLIPIEST-AUTO-SETUP-PROMPT.txt`. You can pass a target YouTube link immediately or leave it blank until the dashboard opens.
+1. **Recommended: Google Antigravity**  
+   Google Antigravity is built for multi-step agentic workflows. When given the master prompt below, it reads the repository, inspects your GPU (NVENC/QSV), sets up the Python virtual environment, installs dependencies, configures AI endpoints, and launches Clipiest without needing manual interventions.
 
-3. **Let it Verify the Machine**  
-   The agent checks Python (3.10–3.12), Git, FFmpeg/ffprobe, free RAM, VRAM, and GPU hardware encoders (`h264_nvenc` for NVIDIA, `h264_qsv` for Intel).
+2. **Alternative Coding Agents**  
+   You can also paste the master prompt into **Claude Code**, **Codex**, **Cursor**, or **Gemini CLI**. Ensure the agent has terminal execution and file-editing permissions.
 
-4. **Keep a Permanent Folder**  
+3. **Permanent Installation Path**  
    - Windows: `C:\clipiest`  
    - macOS / Linux: `~/clipiest`  
-   Avoid temporary desktop folders or deeply nested paths.
+   Keep the project in a dedicated folder to protect user data, models, and exported clips.
+
+</div>
+<div style="flex: 1; min-width: 260px; padding: 14px; border-radius: 8px; border: 1px solid #7c4dff; background: rgba(124, 77, 255, 0.1);">
+
+> ### 💡 Tooltip: How to Install Antigravity
+> 
+> **1. Install Google Antigravity**:
+> - **Antigravity IDE**: Download the official desktop installer from Google DeepMind.
+> - **Antigravity CLI (`agy`)**:
+>   ```bash
+>   npm install -g @google/antigravity
+>   ```
+> 
+> **2. Open & Launch in Workspace**:
+>   ```powershell
+>   cd C:\clipiest
+>   agy
+>   ```
+> 
+> **3. Feed Prompt**:
+>   Paste the master prompt from Section 03 into Antigravity. It will autonomously execute the entire setup from start to finish!
+
+</div>
+</div>
 
 ---
 
-## 03 / MASTER AGENT PROMPT (COPY. PASTE. RUN.)
+## 03 / GOOGLE ANTIGRAVITY MASTER PROMPT (COPY. PASTE. RUN.)
 
-Paste all three parts together into your coding agent terminal in a single prompt:
+Feed this autonomous prompt into **Google Antigravity** (or any terminal-enabled coding agent). Antigravity will autonomously inspect the system, clone the repo, install requirements, configure AI, launch the server, and verify export:
 
 ```text
-Install, configure and test Clipiest on this computer now. Execute the work using your terminal and browser tools. Continue through recoverable errors until a real clip exports.
+You are Google Antigravity, the autonomous AI assistant. Install, configure, and smoke-test CLIPIEST on this computer now.
 
-INPUTS:
-Source URL or local video path: [paste an allowed creator URL or leave blank]
-Install folder: C:\clipiest on Windows; ~/clipiest on macOS/Linux.
-Use local AI by default (LM Studio or Ollama, or Gemini API key). Keep publishing manual.
+REPOSITORY:
+https://github.com/sajjadalinaqvi/clipiest.git
 
-A. CHECK AND INSTALL
-Read https://github.com/sajjadalinaqvi/clipiest.git and inspect this computer's OS, architecture, Python, Git, FFmpeg/ffprobe, RAM, GPU, free VRAM and disk space. Reuse working installs. Choose a supported Python interpreter (Python 3.11 or 3.12). Install missing prerequisites from official sources or package manager. Clone the repository into C:\clipiest (or ~/clipiest), create a virtual environment (.venv), and install requirements.txt.
+DESTINATION DIRECTORY:
+- Windows: C:\clipiest
+- macOS / Linux: ~/clipiest
 
-B. CONFIGURE AI & WHISPER
-Check if LM Studio is running on http://127.0.0.1:1234/v1 or Ollama on http://127.0.0.1:11434. Select an active model (e.g. meta-llama-3.1-8b-instruct or llama3.2:3b). Configure Clipiest via /api/config. Verify faster-whisper loads the small model locally. Run test connection and confirm green Ready status.
+EXECUTION PLAN:
 
-C. START SERVER AND TEST EXPORT
-Start python backend/run.py with the project interpreter. Verify the Web UI at http://127.0.0.1:8780. Process the test video or sample clip through /api/clip with layout: stack, top: 0.32, caption_style: bounce. Verify exported MP4 with ffprobe for 1080x1920 dimensions and valid audio. Create a 1-click desktop restart launcher (Clipiest.bat). Report working URL and output path.
+1. INSPECT & PREREQUISITES:
+   - Check operating system, architecture, Python version (require 3.10, 3.11, or 3.12; recommend 3.11+), Git, and FFmpeg/ffprobe.
+   - Detect GPU hardware encoders (NVIDIA h264_nvenc, Intel h264_qsv, or fallback libx264).
+   - If FFmpeg is missing on Windows, install via: winget install Gyan.FFmpeg -e. On macOS: brew install ffmpeg. On Linux: sudo apt install ffmpeg.
+
+2. CLONE & INSTALL:
+   - If C:\clipiest does not exist, run: git clone https://github.com/sajjadalinaqvi/clipiest.git C:\clipiest
+   - cd C:\clipiest
+   - Create Python virtual environment: python -m venv .venv
+   - Activate environment and install dependencies:
+     Windows: .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+     macOS/Linux: ./.venv/bin/python -m pip install -r backend/requirements.txt
+
+3. CONFIGURE AI BRAIN & WHISPER:
+   - Check if LM Studio is running on http://127.0.0.1:1234/v1 with loaded model (e.g. meta-llama-3.1-8b-instruct or qwen2.5-7b).
+   - If LM Studio is not active, check for OPENAI_API_KEY or GEMINI_API_KEY in environment/settings.
+   - Verify speech recognition engine (faster-whisper with local 'small' model).
+   - Test LLM connection via /api/ai/test or /api/config.
+
+4. LAUNCH & SMOKE-TEST:
+   - Launch server: python backend/run.py
+   - Verify web UI is responding with HTTP 200 at http://127.0.0.1:8780.
+   - Test health check and intake endpoint.
+   - Create a desktop launcher shortcut (Clipiest.bat).
+   - Report active URL, status, and hand off to creator.
 ```
 
 ---
 
 ## 04 / MAKE AI READY
-### Connect the Local Brain
+### Connect the AI Brain (LM Studio vs. OpenAI)
 
-Clipiest unifies **local offline AI** with optional **cloud LLMs** to scout high-retention moments:
+Clipiest requires an LLM to evaluate gaming highlights, detect viral hooks, and score comedic/clutch moments. You can choose **100% Free Local AI (LM Studio)** or **Instant Cloud AI (OpenAI API Key)**:
 
 ```
 [⚡ Configure AI Language Model]
@@ -122,18 +167,57 @@ Clipiest unifies **local offline AI** with optional **cloud LLMs** to scout high
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Option A: LM Studio (Recommended Local)**  
-   - Download LM Studio from `lmstudio.ai`.
-   - Load any instruction model (e.g., `meta-llama-3.1-8b-instruct`, `qwen2.5-7b`, or `mistral-7b-instruct`).
-   - Start the Local Inference Server on port `1234`.
-   - In Clipiest, click **LM Studio** and hit **⚡ Test LLM Connection**.
+### Path A: LM Studio Setup (100% Free & Local AI Brain)
+*Runs completely offline on your computer. Zero subscriptions. Zero API costs.*
 
-2. **Option B: Ollama (CLI Native Local)**  
-   - Run `ollama run llama3.2:3b` or `ollama run qwen2.5:7b`.
-   - In Clipiest, select **Ollama** (`http://127.0.0.1:11434/v1`).
+1. **Download LM Studio**:
+   - Go to [lmstudio.ai](https://lmstudio.ai) and download the installer for your OS (Windows, macOS, or Linux).
+2. **Download an Instruction Model**:
+   - In LM Studio, search for `meta-llama-3.1-8b-instruct` or `qwen2.5-7b-instruct` and download the recommended GGUF quantization (Q4_K_M or Q5_K_M).
+3. **Start the Local Inference Server**:
+   - Click the **Local Server** icon (double-arrow `<->` on the left sidebar).
+   - Select your downloaded model from the dropdown at the top.
+   - Click the green **Start Server** button. By default, LM Studio serves an OpenAI-compatible API at:
+     ```
+     http://127.0.0.1:1234/v1
+     ```
+4. **Connect in Clipiest**:
+   - Open Clipiest at `http://127.0.0.1:8780`.
+   - Click **Settings** or the AI setup gate modal.
+   - Select the **LM Studio** provider card.
+   - Base URL defaults to `http://127.0.0.1:1234/v1` (leave API Key empty).
+   - Click **🔄 Fetch Models** or type `meta-llama-3.1-8b-instruct`.
+   - Click **⚡ Test LLM Connection** (turns green).
+   - Click **Save & Unlock Clipiest 🚀**.
 
-3. **Option C: Google Gemini / Groq / OpenAI (Ultra-Fast Cloud)**  
-   - Select **Google Gemini**, paste your free Gemini API key, and select `gemini-2.5-flash` for instant sub-second moment scouting.
+---
+
+### Path B: OpenAI API Key Setup (Instant Cloud Brain)
+*Instant setup without downloading gigabytes of local models. Ultra-fast inference.*
+
+1. **Get an OpenAI API Key**:
+   - Sign in to the [OpenAI Platform](https://platform.openai.com/api-keys).
+   - Click **Create new secret key**, give it a name (e.g. `Clipiest`), and copy the key (`sk-proj-...`).
+2. **Connect in Clipiest**:
+   - In the Clipiest AI configuration dialog, click the **🤖 OpenAI** provider card.
+   - Endpoint automatically sets to `https://api.openai.com/v1`.
+   - Paste your key into the **API Token / Key** field.
+   - Set Model Name to:
+     ```
+     gpt-4o-mini
+     ```
+     *(Recommended: Costs less than $0.001 per video, with instant responses).*
+3. **Save and Unlock**:
+   - Click **⚡ Test LLM Connection**.
+   - Click **Save & Unlock Clipiest 🚀** to immediately unlock the video studio!
+
+---
+
+### Other Supported Providers
+- **🦙 Ollama (CLI Local)**: `http://127.0.0.1:11434/v1` with `llama3.2:3b` or `qwen2.5:7b`.
+- **⚡ Google Gemini**: Free cloud API key with `gemini-2.5-flash`.
+- **🚀 Groq**: Ultra-fast Llama inference at 500+ tokens/sec.
+- **🌐 OpenRouter / Custom**: Any OpenAI-compatible endpoint.
 
 ---
 

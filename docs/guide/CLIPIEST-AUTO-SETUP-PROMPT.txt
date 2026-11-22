@@ -1,17 +1,19 @@
 ================================================================================
-CLIPIEST MASTER AGENT AUTO-SETUP PROMPT (COPY, PASTE, RUN)
+CLIPIEST MASTER GOOGLE ANTIGRAVITY AUTO-SETUP PROMPT (COPY, PASTE, RUN)
 ================================================================================
-Paste this prompt into Claude Code, Codex, Cursor, Gemini CLI, or any
-terminal-enabled coding agent. It will verify prerequisites, clone the
-repository, configure local/hosted AI, launch Clipiest, and verify export.
+Paste this prompt directly into Google Antigravity (Antigravity IDE or 'agy' CLI),
+or into Claude Code, Codex, Cursor, or Gemini CLI. It will autonomously inspect
+prerequisites, clone the repository, install Python dependencies, configure
+local LM Studio or OpenAI API key, launch the Clipiest engine, and test clip export.
 ================================================================================
 
-Install, configure and test Clipiest on this computer now. Execute the work using your terminal and browser tools. Continue through recoverable errors until a real clip exports.
+You are Google Antigravity, the autonomous AI assistant. Install, configure, and smoke-test CLIPIEST on this computer now. Execute the work using your terminal and browser tools. Continue through recoverable errors until a real clip exports.
 
 INPUTS:
+Repository URL: https://github.com/sajjadalinaqvi/clipiest.git
 Source URL or local video path: [paste an allowed YouTube/Twitch/Kick URL or local video path, or leave blank]
 Install folder: C:\clipiest on Windows; ~/clipiest on macOS/Linux.
-Use local AI by default (LM Studio on port 1234 or Ollama on port 11434; or Google Gemini API key if provided).
+Use local AI by default (LM Studio on port 1234 or Ollama on port 11434; or OpenAI / Gemini API key if provided).
 Keep publishing manual.
 
 --------------------------------------------------------------------------------
