@@ -279,5 +279,47 @@ class TestDevelopRequirements(unittest.TestCase):
             asyncio.run(run_cycle())
             mock_cleanup.assert_called_once()
 
+    # -------------------------------------------------------------
+    # 5. Interactive 9:16 Preview: Caption Y centering & Hook (X, Y, Size)
+    # -------------------------------------------------------------
+    def test_hook_custom_placement_and_size_in_subtitles(self):
+        """Verifies that hook x, y, and size are correctly embedded into ASS subtitle events."""
+        from clipiest.rendering.captions import write_subtitles
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td)
+            write_subtitles(
+                words=[{"start": 0.5, "end": 1.5, "text": "Testing", "clean": "Testing"}],
+                style_key="bounce",
+                out_dir=out_dir,
+                name="test_hook",
+                caption_y=1400,
+                hook="EPIC VICTORY",
+                hook_y=350,
+                hook_x=420,
+                hook_size=95
+            )
+            out_p = out_dir / "test_hook.ass"
+            content = out_p.read_text(encoding="utf-8")
+            self.assertIn("\\pos(420,350)", content)
+            self.assertIn("\\fs95", content)
+            self.assertIn("EPIC VICTORY", content)
+
+    def test_caption_y_vertical_adjustment_centered(self):
+        """Verifies that caption is always aligned to horizontal center (X=540) while Y is custom."""
+        from clipiest.rendering.captions import write_subtitles
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td)
+            write_subtitles(
+                words=[{"start": 0.5, "end": 1.5, "text": "Centered", "clean": "Centered"}],
+                style_key="karaoke",
+                out_dir=out_dir,
+                name="test_cap",
+                caption_y=1550,
+                hook="",
+            )
+            out_p = out_dir / "test_cap.ass"
+            content = out_p.read_text(encoding="utf-8")
+            self.assertIn("\\pos(540,1550)", content)
+
 if __name__ == "__main__":
     unittest.main()

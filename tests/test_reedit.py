@@ -19,7 +19,7 @@ class TestReEdit(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_change_keys_validity(self):
-        expected = {"layout", "top", "cam", "game", "caption_style", "caption_y", "captions", "hook", "title", "words", "background"}
+        expected = {"layout", "top", "cam", "game", "caption_style", "caption_y", "captions", "hook", "title", "words", "background", "hook_x", "hook_size"}
         self.assertEqual(CHANGE_KEYS, expected)
 
     def test_find_file(self):

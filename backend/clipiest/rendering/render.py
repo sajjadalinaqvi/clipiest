@@ -42,6 +42,8 @@ def render_clip(
     hook_y: int = None,
     hook_style: str = "banner",
     background: str = "default",
+    hook_x: int = 540,
+    hook_size: int = None,
 ) -> dict:
     """Renders a vertical 1080x1920 MP4 with burned-in ASS captions and audio normalization."""
     src_path = Path(src_path).resolve()
@@ -88,7 +90,7 @@ def render_clip(
         clip_dur = max(0.5, float(end - start))
         if has_subtitles:
             write_subtitles(
-                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=safe_hook_y, hook_style=hook_style, duration=clip_dur
+                words or [], caption_style, work, "subs", hook=hook, caption_y=safe_caption_y, hook_y=safe_hook_y, hook_style=hook_style, duration=clip_dur, hook_x=hook_x, hook_size=hook_size
             )
             fc = f"{graph};[base]ass=subs.ass:fontsdir=f[v]"
         else:

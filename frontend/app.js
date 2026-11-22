@@ -63,7 +63,14 @@ const appState = {
   sliceWordsUrl: null,
   hookStyle: 'banner',
   hookY: 260,
+  hookX: 540,
+  hookSize: 78,
+  captionY: 1450,
   background: 'default',
+  previewDrag: null,
+  previewHover: null,
+  cachedHookBox: null,
+  cachedCaptionBox: null,
   storageFiles: [],
   storageCategoryFilter: 'all',
   storageSearchQuery: ''
@@ -164,6 +171,7 @@ async function api(path, options = {}) {
 async function init() {
   setupNavigation();
   setupCanvasEvents();
+  setupPreviewCanvasEvents();
   setupControls();
   setupStudioWorkflow();
   setupStorageManager();
@@ -1079,6 +1087,154 @@ function setupCanvasEvents() {
   sourceCanvas.onpointercancel = () => { appState.dragInfo = null; };
 }
 
+function setupPreviewCanvasEvents() {
+  if (!previewCanvas) return;
+
+  function getPreviewCoords(e) {
+    const rect = previewCanvas.getBoundingClientRect();
+    const scaleX = previewCanvas.width / rect.width;
+    const scaleY = previewCanvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  }
+
+  function getPreviewHitMode(pt) {
+    const hb = appState.cachedHookBox;
+    if (hb) {
+      // Corner handle at bottom-right for resizing hook size
+      const cornerX = hb.x + hb.w;
+      const cornerY = hb.y + hb.h;
+      if (Math.hypot(pt.x - cornerX, pt.y - cornerY) <= 22) {
+        return 'hook-resize';
+      }
+      // Hook body for repositioning X and Y
+      if (pt.x >= hb.x - 6 && pt.x <= hb.x + hb.w + 6 && pt.y >= hb.y - 6 && pt.y <= hb.y + hb.h + 6) {
+        return 'hook-move';
+      }
+    }
+
+    const cb = appState.cachedCaptionBox;
+    if (cb) {
+      // Caption: only adjust Y-axis, centered on X
+      if (pt.x >= cb.x - 10 && pt.x <= cb.x + cb.w + 10 && pt.y >= cb.y - 10 && pt.y <= cb.y + cb.h + 10) {
+        return 'caption';
+      }
+    }
+    return null;
+  }
+
+  previewCanvas.onpointerdown = (e) => {
+    const pt = getPreviewCoords(e);
+    const mode = getPreviewHitMode(pt);
+    if (!mode) return;
+
+    appState.previewDrag = {
+      mode,
+      startX: pt.x,
+      startY: pt.y,
+      origHookX: appState.hookX,
+      origHookY: appState.hookY,
+      origHookSize: appState.hookSize,
+      origCaptionY: appState.captionY
+    };
+    previewCanvas.setPointerCapture(e.pointerId);
+    drawPhonePreview();
+  };
+
+  previewCanvas.onpointermove = (e) => {
+    const pt = getPreviewCoords(e);
+    if (appState.previewDrag) {
+      const { mode, startX, startY, origHookX, origHookY, origHookSize, origCaptionY } = appState.previewDrag;
+      const dx = pt.x - startX;
+      const dy = pt.y - startY;
+
+      if (mode === 'caption') {
+        // Caption text height: always aligned to middle of video, only adjust Y-axis
+        const newY = Math.max(300, Math.min(1850, Math.round(origCaptionY + dy * 2)));
+        appState.captionY = newY;
+        if ($('caption-y-slider')) $('caption-y-slider').value = newY;
+      } else if (mode === 'hook-move') {
+        // Hook height and placement: adjust both X and Y axis
+        const newX = Math.max(60, Math.min(1020, Math.round(origHookX + dx * 2)));
+        const newY = Math.max(60, Math.min(1860, Math.round(origHookY + dy * 2)));
+        appState.hookX = newX;
+        appState.hookY = newY;
+        if ($('hook-y-slider')) $('hook-y-slider').value = newY;
+      } else if (mode === 'hook-resize') {
+        // Hook size: adjust size
+        const delta = (dx + dy) / 2;
+        const newSize = Math.max(36, Math.min(140, Math.round(origHookSize + delta * 0.5)));
+        appState.hookSize = newSize;
+      }
+      drawPhonePreview();
+    } else {
+      const mode = getPreviewHitMode(pt);
+      appState.previewHover = mode;
+      if (mode === 'hook-resize') {
+        previewCanvas.style.cursor = 'nwse-resize';
+      } else if (mode === 'hook-move') {
+        previewCanvas.style.cursor = 'move';
+      } else if (mode === 'caption') {
+        previewCanvas.style.cursor = 'ns-resize';
+      } else {
+        previewCanvas.style.cursor = 'default';
+      }
+      drawPhonePreview();
+    }
+  };
+
+  previewCanvas.onpointerup = () => {
+    appState.previewDrag = null;
+    drawPhonePreview();
+  };
+  previewCanvas.onpointercancel = () => {
+    appState.previewDrag = null;
+    drawPhonePreview();
+  };
+
+  previewCanvas.ondblclick = (e) => {
+    const pt = getPreviewCoords(e);
+    const hb = appState.cachedHookBox;
+    if (hb && pt.x >= hb.x - 12 && pt.x <= hb.x + hb.w + 12 && pt.y >= hb.y - 12 && pt.y <= hb.y + hb.h + 12) {
+      openInlineHookEditor(hb);
+    }
+  };
+}
+
+function openInlineHookEditor(hb) {
+  const editor = $('phone-hook-editor');
+  if (!editor) return;
+  const rect = previewCanvas.getBoundingClientRect();
+  const screenX = (hb.hx / 540) * rect.width;
+  const screenY = (hb.hy / 960) * rect.height;
+
+  editor.style.left = screenX + 'px';
+  editor.style.top = screenY + 'px';
+  editor.value = $('hook-input')?.value.trim() || '';
+  editor.hidden = false;
+  editor.focus();
+  editor.select();
+
+  editor.oninput = () => {
+    if ($('hook-input')) $('hook-input').value = editor.value;
+    drawPhonePreview();
+  };
+
+  const closeEditor = () => {
+    editor.hidden = true;
+    drawPhonePreview();
+  };
+
+  editor.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      closeEditor();
+    }
+  };
+  editor.onblur = closeEditor;
+}
+
 function renderLoop() {
   const cw = sourceCanvas.width;
   const ch = sourceCanvas.height;
@@ -1299,21 +1455,27 @@ function drawPhonePreview() {
 
   // Draw Hook
   const hook = $('hook-input')?.value.trim();
-  const hookY = $('hook-y-slider') ? Number($('hook-y-slider').value) / 2 : 130;
+  const hookX = (appState.hookX !== undefined ? appState.hookX : 540) / 2;
+  const hookY = (appState.hookY !== undefined ? appState.hookY : (Number($('hook-y-slider')?.value || 260))) / 2;
+  const hookScale = appState.hookSize ? (appState.hookSize / 78) : 1.0;
   const hookStyle = $('hook-style-select')?.value || 'banner';
+
   if (hook) {
     previewCtx.save();
     previewCtx.textAlign = 'center';
     previewCtx.textBaseline = 'middle';
-    previewCtx.font = '800 22px Plus Jakarta Sans, sans-serif';
+    const fontSize = Math.max(13, Math.min(38, Math.round(22 * hookScale)));
+    previewCtx.font = `800 ${fontSize}px Plus Jakarta Sans, sans-serif`;
 
     // Measure and background banner
     const textWidth = previewCtx.measureText(hook.toUpperCase()).width;
-    const padX = 18, padY = 8;
-    const boxX = (pw - textWidth) / 2 - padX;
-    const boxY = hookY - 14 - padY;
+    const padX = Math.round(18 * hookScale), padY = Math.round(8 * hookScale);
+    const boxX = hookX - textWidth / 2 - padX;
+    const boxY = hookY - (fontSize * 0.7) - padY;
     const boxW = textWidth + padX * 2;
-    const boxH = 28 + padY * 2;
+    const boxH = (fontSize * 1.3) + padY * 2;
+
+    appState.cachedHookBox = { x: boxX, y: boxY, w: boxW, h: boxH, hx: hookX, hy: hookY, fontSize };
 
     if (hookStyle === 'punch') {
       previewCtx.fillStyle = '#dc2626';
@@ -1404,23 +1566,90 @@ function drawPhonePreview() {
       previewCtx.fillStyle = '#ffffff';
     }
 
-    previewCtx.fillText(hook.toUpperCase(), pw / 2, hookY);
+    previewCtx.fillText(hook.toUpperCase(), hookX, hookY);
+
+    // Interactive Hook Selection & Resize UI feedback
+    const isHookActive = appState.previewDrag?.mode?.startsWith('hook') || appState.previewHover?.startsWith('hook');
+    if (isHookActive) {
+      previewCtx.strokeStyle = '#c084fc';
+      previewCtx.lineWidth = 2;
+      previewCtx.setLineDash([4, 4]);
+      previewCtx.strokeRect(boxX - 2, boxY - 2, boxW + 4, boxH + 4);
+      previewCtx.setLineDash([]);
+
+      // Resize handle on bottom-right corner
+      const rhSize = 10;
+      previewCtx.fillStyle = '#ffffff';
+      previewCtx.strokeStyle = '#7c3aed';
+      previewCtx.lineWidth = 2;
+      previewCtx.fillRect(boxX + boxW - rhSize / 2, boxY + boxH - rhSize / 2, rhSize, rhSize);
+      previewCtx.strokeRect(boxX + boxW - rhSize / 2, boxY + boxH - rhSize / 2, rhSize, rhSize);
+
+      // Info pill badge above hook
+      previewCtx.fillStyle = 'rgba(124, 58, 237, 0.9)';
+      previewCtx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
+      const badgeText = `✥ Hook (X:${Math.round(hookX * 2)}, Y:${Math.round(hookY * 2)}, Size:${appState.hookSize || 78}) • Dbl-click to edit ✏️`;
+      const badgeW = previewCtx.measureText(badgeText).width + 12;
+      previewCtx.fillRect(hookX - badgeW / 2, Math.max(8, boxY - 20), badgeW, 16);
+      previewCtx.fillStyle = '#ffffff';
+      previewCtx.fillText(badgeText, hookX, Math.max(16, boxY - 12));
+    }
+
     previewCtx.restore();
+  } else {
+    appState.cachedHookBox = null;
   }
 
   // Draw Sample or Transcribed Subtitles
-  const subY = Number($('caption-y-slider')?.value || 1450) / 2;
+  const subY = (appState.captionY !== undefined ? appState.captionY : Number($('caption-y-slider')?.value || 1450)) / 2;
+  const subX = pw / 2; // Always aligned to the middle of the video
   const sampleWords = appState.sliceWords && appState.sliceWords.length
     ? appState.sliceWords.slice(0, 3).map(w => w.text || w.w).join(' ').toUpperCase()
     : 'CLIPIEST AI MOMENT';
+
   previewCtx.save();
   previewCtx.textAlign = 'center';
-  previewCtx.font = '900 28px Plus Jakarta Sans, sans-serif';
+  previewCtx.textBaseline = 'middle';
+  previewCtx.font = '900 26px Plus Jakarta Sans, sans-serif';
+
+  const capTextWidth = previewCtx.measureText(sampleWords).width;
+  const capBoxW = Math.max(260, capTextWidth + 36);
+  const capBoxH = 44;
+  const capBoxX = subX - capBoxW / 2;
+  const capBoxY = subY - capBoxH / 2;
+
+  appState.cachedCaptionBox = { x: capBoxX, y: capBoxY, w: capBoxW, h: capBoxH, cx: subX, cy: subY };
+
   previewCtx.lineWidth = 6;
   previewCtx.strokeStyle = '#000';
-  previewCtx.strokeText(sampleWords, pw / 2, subY);
+  previewCtx.strokeText(sampleWords, subX, subY);
   previewCtx.fillStyle = appState.captionStyle === 'gta' ? '#ec4899' : (appState.captionStyle === 'hype' ? '#22c55e' : (appState.captionStyle === 'mrbeast' ? '#facc15' : '#ffffff'));
-  previewCtx.fillText(sampleWords, pw / 2, subY);
+  previewCtx.fillText(sampleWords, subX, subY);
+
+  // Interactive Caption Selection UI feedback (Y-axis adjust)
+  const isCapActive = appState.previewDrag?.mode === 'caption' || appState.previewHover === 'caption';
+  if (isCapActive) {
+    previewCtx.strokeStyle = '#06b6d4';
+    previewCtx.lineWidth = 2;
+    previewCtx.setLineDash([4, 4]);
+    previewCtx.strokeRect(capBoxX, capBoxY, capBoxW, capBoxH);
+    previewCtx.setLineDash([]);
+
+    // Top and bottom handle bars
+    previewCtx.fillStyle = '#06b6d4';
+    previewCtx.fillRect(subX - 16, capBoxY - 3, 32, 6);
+    previewCtx.fillRect(subX - 16, capBoxY + capBoxH - 3, 32, 6);
+
+    // Info pill badge above caption
+    previewCtx.fillStyle = 'rgba(6, 182, 212, 0.95)';
+    previewCtx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
+    const capBadge = `↕ Subtitles Y: ${Math.round(subY * 2)}px (Centered)`;
+    const capBadgeW = previewCtx.measureText(capBadge).width + 12;
+    previewCtx.fillRect(subX - capBadgeW / 2, Math.max(8, capBoxY - 20), capBadgeW, 16);
+    previewCtx.fillStyle = '#000000';
+    previewCtx.fillText(capBadge, subX, Math.max(16, capBoxY - 12));
+  }
+
   previewCtx.restore();
 }
 
@@ -1521,11 +1750,24 @@ function setupStudioWorkflow() {
   if ($('hook-style-select')) {
     $('hook-style-select').onchange = (e) => {
       appState.hookStyle = e.target.value;
+      drawPhonePreview();
     };
   }
   if ($('hook-y-slider')) {
     $('hook-y-slider').oninput = (e) => {
       appState.hookY = Number(e.target.value);
+      drawPhonePreview();
+    };
+  }
+  if ($('caption-y-slider')) {
+    $('caption-y-slider').oninput = (e) => {
+      appState.captionY = Number(e.target.value);
+      drawPhonePreview();
+    };
+  }
+  if ($('hook-input')) {
+    $('hook-input').oninput = () => {
+      drawPhonePreview();
     };
   }
 }
@@ -1896,8 +2138,10 @@ async function generateFinalClip() {
     top: appState.topH,
     caption_style: appState.captionStyle,
     hook_style: $('hook-style-select')?.value || 'banner',
-    caption_y: Number($('caption-y-slider')?.value || 1450),
-    hook_y: Number($('hook-y-slider')?.value || 260),
+    caption_y: appState.captionY !== undefined ? appState.captionY : Number($('caption-y-slider')?.value || 1450),
+    hook_y: appState.hookY !== undefined ? appState.hookY : Number($('hook-y-slider')?.value || 260),
+    hook_x: appState.hookX !== undefined ? appState.hookX : 540,
+    hook_size: appState.hookSize !== undefined ? appState.hookSize : 78,
     hook: $('hook-input')?.value.trim() || '',
     words: wordsToSend,
     cam: appState.rect.cam,
@@ -2705,6 +2949,11 @@ async function triggerManualExport() {
     layout: appState.layout,
     top: appState.topH,
     caption_style: appState.captionStyle,
+    hook_style: $('hook-style-select')?.value || 'banner',
+    caption_y: appState.captionY !== undefined ? appState.captionY : Number($('caption-y-slider')?.value || 1450),
+    hook_y: appState.hookY !== undefined ? appState.hookY : Number($('hook-y-slider')?.value || 260),
+    hook_x: appState.hookX !== undefined ? appState.hookX : 540,
+    hook_size: appState.hookSize !== undefined ? appState.hookSize : 78,
     cam: appState.rect.cam,
     game: appState.rect.game,
     hook: $('hook-input').value.trim(),
@@ -2967,9 +3216,24 @@ async function openSavedClip(clipId) {
       appState.captionStyle = s.caption_style;
       document.querySelectorAll('.style-card').forEach(c => c.classList.toggle('active', c.dataset.style === s.caption_style));
     }
+    if (s.caption_y !== undefined) {
+      appState.captionY = s.caption_y;
+      if ($('caption-y-slider')) $('caption-y-slider').value = s.caption_y;
+    }
+    if (s.hook_y !== undefined) {
+      appState.hookY = s.hook_y;
+      if ($('hook-y-slider')) $('hook-y-slider').value = s.hook_y;
+    }
+    if (s.hook_x !== undefined) appState.hookX = s.hook_x;
+    if (s.hook_size !== undefined) appState.hookSize = s.hook_size;
+    if (s.background) {
+      appState.background = s.background;
+      document.querySelectorAll('.bg-option-btn').forEach(b => b.classList.toggle('active', b.dataset.bg === s.background));
+    }
     if (s.hook) $('hook-input').value = s.hook;
     if (s.start !== undefined) $('time-start').value = s.start;
     if (s.end !== undefined) $('time-end').value = s.end;
+    drawPhonePreview();
 
     if ($('source-status-badge')) {
       $('source-status-badge').textContent = `Re-editing: ${clipId}`;

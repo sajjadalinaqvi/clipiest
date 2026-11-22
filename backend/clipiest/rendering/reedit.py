@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from .layouts import CATALOG, LAYOUT_IDS, geometry
 from .render import render_clip, probe_video
 
-CHANGE_KEYS = {"layout", "top", "cam", "game", "caption_style", "caption_y", "captions", "hook", "title", "words", "background"}
+CHANGE_KEYS = {"layout", "top", "cam", "game", "caption_style", "caption_y", "captions", "hook", "title", "words", "background", "hook_x", "hook_size"}
 
 def find_file(data_dir: Path, name: str) -> Path | None:
     p = data_dir / name
@@ -217,7 +217,10 @@ def attach_reedit(app, data_dir: Path, state: dict):
                         caption_style=s.get("caption_style", "bounce"),
                         caption_y=int(s.get("caption_y", 1450)),
                         hook=s.get("hook", ""),
-                        background=s.get("background", "default")
+                        hook_y=int(s["hook_y"]) if s.get("hook_y") is not None else None,
+                        background=s.get("background", "default"),
+                        hook_x=int(s.get("hook_x", 540)),
+                        hook_size=int(s["hook_size"]) if s.get("hook_size") is not None else None
                     )
                     
                     # Mark previous record as superseded

@@ -550,18 +550,22 @@ select:focus {
   color: #fff;
 }
 
-/* 11 Layout Cards Grid */
+/* 11 Layout Cards Grid - Compact Framing Section (-30% scale) */
+.layouts-section {
+  margin-top: 10px;
+}
+
 .layouts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
+  gap: 8px;
 }
 
 .layout-card {
   background: var(--bg-dark);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px;
+  border-radius: var(--radius-sm);
+  padding: 6px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -578,23 +582,23 @@ select:focus {
 .layout-card.active {
   border-color: var(--primary);
   background: rgba(124, 58, 237, 0.15);
-  box-shadow: 0 0 12px rgba(124, 58, 237, 0.3);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.3);
 }
 
 .layout-mini {
-  width: 45px;
-  height: 80px;
+  width: 32px;
+  height: 56px;
   background: #000;
-  border-radius: 4px;
+  border-radius: 3px;
   position: relative;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   border: 1px solid #333;
 }
 
 .layout-layer {
   position: absolute;
-  border-radius: 2px;
+  border-radius: 1px;
 }
 
 .layer-cam {
@@ -617,25 +621,27 @@ select:focus {
 
 .layout-blur-inset {
   position: absolute;
-  inset: 18px 2px;
+  inset: 12px 2px;
   background: var(--cyan);
-  border-radius: 2px;
+  border-radius: 1px;
 }
 
 .layout-card b {
-  font-size: 12px;
-  margin-bottom: 2px;
+  font-size: 10px;
+  margin-bottom: 1px;
+  white-space: nowrap;
 }
 
 .layout-card small {
-  font-size: 10px;
+  font-size: 8.5px;
+  line-height: 1.1;
   color: var(--text-muted);
 }
 
 /* Studio Workspace & Dual-Canvas */
 .studio-workspace {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 380px;
   gap: 20px;
 }
 
@@ -745,7 +751,7 @@ select:focus {
   margin-bottom: 8px;
 }
 
-/* 9:16 Phone Simulator */
+/* 9:16 Phone Simulator - Enlarged & Interactive */
 .phone-panel {
   display: flex;
   flex-direction: column;
@@ -755,27 +761,50 @@ select:focus {
 .phone-header {
   display: flex;
   justify-content: space-between;
-  width: 270px;
+  width: 340px;
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 8px;
 }
 
 .phone-frame {
-  width: 270px;
-  height: 480px;
+  width: 340px;
+  height: 604px;
   background: #000;
-  border-radius: 24px;
+  border-radius: 28px;
   border: 3px solid #2e3456;
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.7);
   overflow: hidden;
   position: relative;
+  user-select: none;
 }
 
 #preview-canvas {
   width: 100%;
   height: 100%;
   display: block;
+  cursor: default;
+}
+
+.phone-inline-editor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid var(--primary);
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.6);
+  z-index: 20;
+  outline: none;
+  min-width: 160px;
+  max-width: 85%;
 }
 
 /* Subtitle Styles Grid */

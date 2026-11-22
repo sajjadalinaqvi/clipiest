@@ -564,6 +564,8 @@ def manual_export(body: dict):
     hook_style = body.get("hook_style", "banner")
     caption_y = int(body.get("caption_y", 1450))
     hook_y = int(body.get("hook_y", 260)) if body.get("hook_y") is not None else None
+    hook_x = int(body.get("hook_x", 540)) if body.get("hook_x") is not None else 540
+    hook_size = int(body.get("hook_size", 78)) if body.get("hook_size") is not None else None
     hook = str(body.get("hook", ""))
     background = str(body.get("background", "default")).lower().strip()
     if background not in ("default", "black", "white"):
@@ -655,7 +657,9 @@ def manual_export(body: dict):
                 hook=hook,
                 hook_y=hook_y,
                 hook_style=hook_style,
-                background=background
+                background=background,
+                hook_x=hook_x,
+                hook_size=hook_size
             )
             
             (out_dir / f"{clip_id}.json").write_text(json.dumps({
@@ -673,6 +677,8 @@ def manual_export(body: dict):
                     "hook_style": hook_style,
                     "caption_y": caption_y,
                     "hook_y": hook_y,
+                    "hook_x": hook_x,
+                    "hook_size": hook_size,
                     "hook": hook,
                     "words": words,
                     "source_url": url,
