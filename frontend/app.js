@@ -459,6 +459,24 @@ function setupNavigation() {
       alert('Could not open folder: ' + e.message);
     }
   };
+
+  const handleHash = () => {
+    const h = window.location.hash;
+    if (h === '#settings-social') {
+      switchTab('settings');
+      $('subtab-btn-social')?.click();
+    } else if (h === '#settings-storage') {
+      switchTab('settings');
+      $('subtab-btn-storage')?.click();
+    } else if (h === '#setup-gate') {
+      openConfigModal();
+    } else if (h === '#library') {
+      switchTab('library');
+      loadLibrary();
+    }
+  };
+  window.addEventListener('hashchange', handleHash);
+  setTimeout(handleHash, 250);
 }
 
 // -------------------------------------------------------------
