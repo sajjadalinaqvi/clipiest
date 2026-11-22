@@ -565,6 +565,9 @@ def manual_export(body: dict):
     caption_y = int(body.get("caption_y", 1450))
     hook_y = int(body.get("hook_y", 260)) if body.get("hook_y") is not None else None
     hook = str(body.get("hook", ""))
+    background = str(body.get("background", "default")).lower().strip()
+    if background not in ("default", "black", "white"):
+        background = "default"
     words = body.get("words", [])
     if not slice_id and body.get("slice_id"):
         # Slice was discarded because it belonged to another video URL; discard stale words too!
@@ -651,7 +654,8 @@ def manual_export(body: dict):
                 caption_y=caption_y,
                 hook=hook,
                 hook_y=hook_y,
-                hook_style=hook_style
+                hook_style=hook_style,
+                background=background
             )
             
             (out_dir / f"{clip_id}.json").write_text(json.dumps({
@@ -671,7 +675,8 @@ def manual_export(body: dict):
                     "hook_y": hook_y,
                     "hook": hook,
                     "words": words,
-                    "source_url": url
+                    "source_url": url,
+                    "background": background
                 },
                 "result": {**res, "status": "done"}
             }, indent=2), encoding="utf-8")

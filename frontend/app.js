@@ -63,6 +63,7 @@ const appState = {
   sliceWordsUrl: null,
   hookStyle: 'banner',
   hookY: 260,
+  background: 'default',
   storageFiles: [],
   storageCategoryFilter: 'all',
   storageSearchQuery: ''
@@ -612,11 +613,11 @@ function setupControls() {
   // Tools toggle (Cam vs Game)
   $('tool-cam').onclick = () => setActiveTool('cam');
   $('tool-game').onclick = () => setActiveTool('game');
-  if ($('game-fit-screen-btn')) {
-    $('game-fit-screen-btn').onclick = () => {
-      setActiveTool('game');
-      appState.rect.game = { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
-      drawSourceCanvas();
+
+  // Background selector
+  if ($('bg-type-select')) {
+    $('bg-type-select').onchange = (e) => {
+      appState.background = e.target.value;
       drawPhonePreview();
     };
   }
@@ -1116,11 +1117,8 @@ function renderLoop() {
   sourceCtx.fillRect(gx, gy, gw, gh);
 
   // Gameplay Label
-  const isWholeGame = (g.w >= 0.88 && g.h >= 0.88);
-  const labelText = isWholeGame
-    ? (isGameActive ? '★ GAMEPLAY (WHOLE SCREEN FIT)' : 'GAMEPLAY (16:9 FIT)')
-    : (isGameActive ? '★ GAMEPLAY (ACTIVE)' : 'GAMEPLAY');
-  const labelWidth = isWholeGame ? 190 : 140;
+  const labelText = isGameActive ? '★ GAMEPLAY (ACTIVE)' : 'GAMEPLAY';
+  const labelWidth = isGameActive ? 120 : 80;
 
   sourceCtx.fillStyle = isGameActive ? '#06b6d4' : 'rgba(6, 182, 212, 0.7)';
   sourceCtx.fillRect(gx, Math.max(0, gy - 20), Math.min(gw, labelWidth), 20);
@@ -1183,19 +1181,18 @@ function drawPhonePreview() {
   const pw = previewCanvas.width;  // 540
   const ph = previewCanvas.height; // 960
 
-  previewCtx.fillStyle = '#000';
-  previewCtx.fillRect(0, 0, pw, ph);
-
-  const spec = appState.layoutsCatalog.find(l => l.id === appState.layout);
-  if (!spec || !appState.currentImageSource) {
-    // Placeholder pattern
-    previewCtx.fillStyle = '#1e2238';
+  // 1. Draw base background (default blurred, black, or white)
+  const bgType = appState.background || 'default';
+  if (bgType === 'black') {
+    previewCtx.fillStyle = '#000000';
     previewCtx.fillRect(0, 0, pw, ph);
-  } else if (spec.mode === 'blur') {
+  } else if (bgType === 'white') {
+    previewCtx.fillStyle = '#ffffff';
+    previewCtx.fillRect(0, 0, pw, ph);
+  } else if (appState.currentImageSource) {
+    // Default: expanded source video blurred to fill empty space
     const nw = appState.currentImageSource.naturalWidth || 1920;
     const nh = appState.currentImageSource.naturalHeight || 1080;
-
-    // Aspect-ratio-preserved blurred background cover
     previewCtx.save();
     previewCtx.filter = 'blur(14px)';
     const bgScale = Math.max((pw + 40) / nw, (ph + 40) / nh);
@@ -1203,14 +1200,26 @@ function drawPhonePreview() {
     const bgH = nh * bgScale;
     previewCtx.drawImage(appState.currentImageSource, (pw - bgW) / 2, (ph - bgH) / 2, bgW, bgH);
     previewCtx.restore();
+  } else {
+    previewCtx.fillStyle = '#1e2238';
+    previewCtx.fillRect(0, 0, pw, ph);
+  }
 
+  const spec = appState.layoutsCatalog.find(l => l.id === appState.layout);
+  if (!spec || !appState.currentImageSource) {
+    return;
+  }
+
+  if (spec.mode === 'blur') {
+    const nw = appState.currentImageSource.naturalWidth || 1920;
+    const nh = appState.currentImageSource.naturalHeight || 1080;
     // Center sharp inset (aspect-ratio-preserved decrease fit, matches FFmpeg)
     const ratio = Math.min(pw / nw, ph / nh);
     const w = nw * ratio;
     const h = nh * ratio;
     previewCtx.drawImage(appState.currentImageSource, (pw - w) / 2, (ph - h) / 2, w, h);
   } else {
-    // Draw stacked or pip layers with aspect-ratio-preserving cover (exact match to FFmpeg force_original_aspect_ratio=increase,crop=lw:lh)
+    // Draw stacked or pip layers with exact left-to-right gameplay fit and facecam framing
     for (const layer of spec.layers || []) {
       previewCtx.save();
       const lx = layer.x / 2;
@@ -1233,11 +1242,23 @@ function drawPhonePreview() {
       const sw = Math.max(1, Math.min(nw - sx, box.w * nw));
       const sh = Math.max(1, Math.min(nh - sy, box.h * nh));
 
-      const isWholeScreenGame = (layer.source === 'game' || layer.source === 'full') &&
-                                (box.w >= 0.88 && box.h >= 0.88);
+      if (layer.source === 'cam') {
+        // Facecam fills its box (does not affect facecam size)
+        const scale = Math.max(lw / sw, lh / sh);
+        const srcUsedW = Math.min(sw, lw / scale);
+        const srcUsedH = Math.min(sh, lh / scale);
+        const srcOffX = sx + (sw - srcUsedW) / 2;
+        const srcOffY = sy + (sh - srcUsedH) / 2;
 
-      if (isWholeScreenGame) {
-        // Fit whole 16:9 screen in the 9:16 target layer (zero cropping of minimap, HUD, or sides)
+        previewCtx.drawImage(
+          img,
+          Math.max(0, srcOffX), Math.max(0, srcOffY),
+          Math.min(nw - Math.max(0, srcOffX), srcUsedW), Math.min(nh - Math.max(0, srcOffY), srcUsedH),
+          lx, ly, lw, lh
+        );
+      } else if (layer.source === 'game') {
+        // Gameplay fits from left to right inside the video under facecam (width = lw = 540)
+        // Aspect ratio is strictly preserved, creating blank space filled by background
         const scale = Math.min(lw / sw, lh / sh);
         const drawW = sw * scale;
         const drawH = sh * scale;
@@ -1250,8 +1271,7 @@ function drawPhonePreview() {
           drawX, drawY, drawW, drawH
         );
       } else {
-        // Replicate FFmpeg scale=lw:lh:force_original_aspect_ratio=increase,crop=lw:lh
-        // Scale source crop so it covers (lw, lh) while preserving aspect ratio (zero stretching)
+        // Full screen
         const scale = Math.max(lw / sw, lh / sh);
         const srcUsedW = Math.min(sw, lw / scale);
         const srcUsedH = Math.min(sh, lh / scale);
@@ -1881,7 +1901,8 @@ async function generateFinalClip() {
     hook: $('hook-input')?.value.trim() || '',
     words: wordsToSend,
     cam: appState.rect.cam,
-    game: appState.rect.game
+    game: appState.rect.game,
+    background: appState.background || 'default'
   };
 
   $('execution-panel').hidden = false;
@@ -2686,7 +2707,8 @@ async function triggerManualExport() {
     caption_style: appState.captionStyle,
     cam: appState.rect.cam,
     game: appState.rect.game,
-    hook: $('hook-input').value.trim()
+    hook: $('hook-input').value.trim(),
+    background: appState.background || 'default'
   };
 
   $('execution-panel').hidden = false;

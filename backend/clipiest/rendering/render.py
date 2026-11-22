@@ -41,6 +41,7 @@ def render_clip(
     hook: str = "",
     hook_y: int = None,
     hook_style: str = "banner",
+    background: str = "default",
 ) -> dict:
     """Renders a vertical 1080x1920 MP4 with burned-in ASS captions and audio normalization."""
     src_path = Path(src_path).resolve()
@@ -81,8 +82,7 @@ def render_clip(
 
         # Build layout filter
         rects = [cam_rect, game_rect]
-        is_whole_game = bool(game_rect[2] >= 0.88 * vw and game_rect[3] >= 0.88 * vh)
-        graph = render_graph(layout, rects, top, is_whole_game=is_whole_game)
+        graph = render_graph(layout, rects, top, background=background)
 
         has_subtitles = bool((words and len(words) > 0) or hook.strip())
         clip_dur = max(0.5, float(end - start))

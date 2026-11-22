@@ -55,21 +55,29 @@ class TestDevelopRequirements(unittest.TestCase):
             self.assertEqual(words[0]["text"], "Hello")
 
     # -------------------------------------------------------------
-    # 2. Gameplay box whole screen 16:9 fit in 9:16 layout
+    # 2. Gameplay box left-to-right fit & 3 background options (default, black, white)
     # -------------------------------------------------------------
-    def test_gameplay_box_whole_screen_fit(self):
-        """When gameplay box is selected as whole screen, render_graph must use decrease+pad to fit full screen."""
-        rects = [(0, 0, 480, 270), (0, 0, 1920, 1080)]
-        # Whole screen gameplay
-        graph = render_graph("stack", rects, top=0.32, is_whole_game=True)
+    def test_gameplay_box_left_to_right_fit(self):
+        """Gameplay box (e.g. 1280x620) fits from left to right under facecam without affecting facecam size."""
+        rects = [(0, 0, 480, 270), (0, 0, 1280, 620)]
+        graph = render_graph("stack", rects, top=0.32, background="default")
+        # Facecam size is untouched (fills its camera slot 1080x614)
+        self.assertIn("crop=1080:614", graph)
+        # Gameplay fits left-to-right with decrease, preserving aspect ratio
         self.assertIn("force_original_aspect_ratio=decrease", graph)
-        self.assertIn("pad=1080:", graph)
+        self.assertIn("(1080-w)/2", graph)
 
-    def test_gameplay_box_tight_crop_fill(self):
-        """When gameplay box is a small custom crop, render_graph uses increase+crop."""
-        rects = [(0, 0, 480, 270), (500, 200, 400, 700)]
-        graph = render_graph("stack", rects, top=0.32, is_whole_game=False)
-        self.assertIn("force_original_aspect_ratio=increase,crop=1080:", graph)
+    def test_background_options(self):
+        """Verifies default (blurred video), black, and white background filter complex generation."""
+        rects = [(0, 0, 480, 270), (0, 0, 1280, 620)]
+        graph_default = render_graph("stack", rects, top=0.32, background="default")
+        self.assertIn("boxblur=", graph_default)
+
+        graph_black = render_graph("stack", rects, top=0.32, background="black")
+        self.assertIn("color=black", graph_black)
+
+        graph_white = render_graph("stack", rects, top=0.32, background="white")
+        self.assertIn("color=white", graph_white)
 
     # -------------------------------------------------------------
     # 3. LLM timestamps: middle timestamps, timecode parsing, score >= 85

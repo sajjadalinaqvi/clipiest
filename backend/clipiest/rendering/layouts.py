@@ -79,28 +79,41 @@ def geometry(name: str, top: float = 0.32) -> dict:
         ]
     }
 
-def render_graph(name: str, rects: list, top: float = 0.32, is_whole_game: bool = None) -> str:
+def render_graph(name: str, rects: list, top: float = 0.32, background: str = "default", is_whole_game: bool = None) -> str:
     """Builds the FFmpeg -filter_complex string for this layout given crop rects: [(cam_x,y,w,h), (game_x,y,w,h)].
-    If the gameplay box represents the whole screen (is_whole_game=True), it fits the entire 16:9
-    gameplay into the 9:16 target section without cropping off the sides.
+    The gameplay box fits from left to right inside the video under facecam without affecting facecam size.
+    The empty space is filled by the selected background:
+    - 'default': the same expanded source video blurred to fill empty space
+    - 'black': solid black background
+    - 'white': solid white background
     """
     spec = geometry(name, top)
+    bg = (background or "default").lower().strip()
+    if bg == "black":
+        bg_filter = "scale=1080:1920,drawbox=x=0:y=0:w=1080:h=1920:color=black:t=fill"
+    elif bg == "white":
+        bg_filter = "scale=1080:1920,drawbox=x=0:y=0:w=1080:h=1920:color=white:t=fill"
+    else:  # default / blur
+        bg_filter = (
+            "scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=14:3,"
+            "scale=1080:1920,eq=brightness=-0.12:saturation=1.15"
+        )
+
     if spec["mode"] == "blur":
         return (
-            "[0:v]split=2[b][f];"
-            "[b]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=8:2,"
-            "scale=1080:1920,eq=brightness=-0.12:saturation=1.15[bg];"
-            "[f]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-            "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]"
+            f"[0:v]split=2[b][f];"
+            f"[b]{bg_filter}[bg];"
+            f"[f]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]"
         )
     
     layers = spec["layers"]
-    parts = []
-    if len(layers) > 1:
-        parts.append(f"[0:v]split={len(layers)}" + "".join(f"[s{i}]" for i in range(len(layers))))
+    num_splits = 1 + len(layers)
+    parts = [f"[0:v]split={num_splits}[s_bg]" + "".join(f"[s{i}]" for i in range(len(layers)))]
+    parts.append(f"[s_bg]{bg_filter}[bg]")
     
     for i, layer in enumerate(layers):
-        source = f"[s{i}]" if len(layers) > 1 else "[0:v]"
+        source = f"[s{i}]"
         crop = ""
         is_game_source = layer["source"] in ("game", "full")
         if layer["source"] != "full":
@@ -110,13 +123,6 @@ def render_graph(name: str, rects: list, top: float = 0.32, is_whole_game: bool 
             x = max(0, int(x))
             y = max(0, int(y))
             crop = f"crop={w}:{h}:{x}:{y},"
-        else:
-            w, h = 1920, 1080
-
-        # Auto-detect if gameplay box is whole screen or wide 16:9
-        should_fit_whole = is_whole_game
-        if should_fit_whole is None and is_game_source:
-            should_fit_whole = bool(w >= 900 and h >= 500 and (w / max(1, h)) >= 1.5)
 
         lw, lh = layer["w"], layer["h"]
         mask = ""
@@ -124,17 +130,25 @@ def render_graph(name: str, rects: list, top: float = 0.32, is_whole_game: bool 
             # Smooth circular alpha mask equation
             mask = ",format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow(X-W/2,2)+pow(Y-H/2,2),pow(min(W,H)/2,2)),255,0)'"
 
-        if is_game_source and should_fit_whole:
-            # Fit the entire 16:9 screen in the 9:16 target layer (preserves minimap, HUD, and killfeed)
-            scale_filter = f"scale={lw}:{lh}:force_original_aspect_ratio=decrease,pad={lw}:{lh}:(ow-iw)/2:(oh-ih)/2:black,setsar=1{mask}"
+        if is_game_source and layer["source"] != "full":
+            # Fits from left to right (width = lw = 1080) under facecam, preserving aspect ratio with zero side cropping
+            scale_filter = f"scale={lw}:{lh}:force_original_aspect_ratio=decrease,setsar=1{mask}"
         else:
             scale_filter = f"scale={lw}:{lh}:force_original_aspect_ratio=increase,crop={lw}:{lh},setsar=1{mask}"
 
         parts.append(f"{source}{crop}{scale_filter}[p{i}]")
     
-    first = layers[0]
-    parts.append(f"[p0]pad=1080:1920:{first['x']}:{first['y']}:black[b0]")
-    for i, layer in enumerate(layers[1:], 1):
-        parts.append(f"[b{i-1}][p{i}]overlay={layer['x']}:{layer['y']}:shortest=1[b{i}]")
-    parts.append(f"[b{len(layers)-1}]null[base]")
+    curr = "[bg]"
+    for i, layer in enumerate(layers):
+        next_label = f"[b{i}]" if i < len(layers) - 1 else "[base]"
+        if layer["source"] == "cam" or layer["source"] == "full":
+            ox = layer["x"]
+            oy = layer["y"]
+        else:
+            # Fits from left to right inside the video under facecam, vertically centered in the remaining space
+            ox = "(1080-w)/2"
+            oy = f"{layer['y']}+({layer['h']}-h)/2"
+        parts.append(f"{curr}[p{i}]overlay={ox}:{oy}:shortest=1{next_label}")
+        curr = next_label
+
     return ";".join(parts)
