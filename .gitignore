@@ -41,6 +41,8 @@ data/
 *.png
 !frontend/logo.png
 !frontend/logo_banner.png
+!docs/marketing/cards/*.png
+!docs/guide/*.png
 
 # Environment
 .env
