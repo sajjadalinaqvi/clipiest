@@ -8,6 +8,7 @@ if CURRENT_DIR not in sys.path:
 
 import uvicorn
 from clipiest.config import HOST, PORT, HAS_NVENC, HAS_QSV, AI_PROVIDER, WHISPER_MODEL, DATA_DIR
+from clipiest.storage.manager import cleanup_on_shutdown
 
 def main():
     gpu_status = "NVENC (NVIDIA Hardware)" if HAS_NVENC else ("QSV (Intel Hardware)" if HAS_QSV else "CPU Software (libx264)")
@@ -26,6 +27,11 @@ def main():
         uvicorn.run("clipiest.server:app", host=HOST, port=PORT, reload=False, access_log=True)
     except (KeyboardInterrupt, SystemExit):
         print("\n[Clipiest] Server stopped cleanly.")
+    finally:
+        try:
+            cleanup_on_shutdown()
+        except Exception as e:
+            print(f"[Clipiest] Warning during shutdown cleanup: {e}")
 
 if __name__ == "__main__":
     main()

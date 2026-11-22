@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from clipiest.audio.transcribe import youtube_words_from_info, transcribe_audio_segment
 from clipiest.rendering.layouts import render_graph
 from clipiest.ai.brain import find_viral_moments_ai, parse_timestamp, evaluate_moment, fallback_by_loudness
+from clipiest.storage.manager import is_protected_storage_file, cleanup_on_shutdown
+import tempfile
+import shutil
+import asyncio
 
 class TestDevelopRequirements(unittest.TestCase):
     
@@ -136,6 +140,136 @@ class TestDevelopRequirements(unittest.TestCase):
         starts = [p["start"] for p in picks]
         has_middle = any(0.25 * duration <= s <= 0.75 * duration for s in starts)
         self.assertTrue(has_middle, f"Picks must cover middle of timeline: {starts}")
+
+    # -------------------------------------------------------------
+    # 4. Server shutdown cleanup & storage protection
+    # -------------------------------------------------------------
+    def test_is_protected_storage_file(self):
+        """Verifies that sensitive configurations, whisper models, and creator profiles are protected."""
+        self.assertTrue(is_protected_storage_file(Path("config.json")))
+        self.assertTrue(is_protected_storage_file(Path("cookies.txt")))
+        self.assertTrue(is_protected_storage_file(Path("weights.json")))
+        self.assertTrue(is_protected_storage_file(Path("feedback.jsonl")))
+        self.assertTrue(is_protected_storage_file(Path("social_accounts.json")))
+        self.assertTrue(is_protected_storage_file(Path("models/faster-whisper/model.bin")))
+        self.assertTrue(is_protected_storage_file(Path(".git/config")))
+        self.assertTrue(is_protected_storage_file(Path("creators/creators.json")))
+        self.assertTrue(is_protected_storage_file(Path("creators/ninja/profile.json")))
+        self.assertTrue(is_protected_storage_file(Path("secret.env")))
+        self.assertTrue(is_protected_storage_file(Path("script.py")))
+
+        # Disposable clipping artifacts must NOT be protected
+        self.assertFalse(is_protected_storage_file(Path("exports/clip1.mp4")))
+        self.assertFalse(is_protected_storage_file(Path("slices/slice_1.json")))
+        self.assertFalse(is_protected_storage_file(Path("slices/slice_1_words.json")))
+        self.assertFalse(is_protected_storage_file(Path("exports/clip1.ass")))
+        self.assertFalse(is_protected_storage_file(Path("exports/clip1.srt")))
+        self.assertFalse(is_protected_storage_file(Path("frame_0.jpg")))
+
+    def test_cleanup_on_shutdown_purges_clipping_data_and_protects_configs(self):
+        """Verifies that cleanup_on_shutdown wipes clipped videos, downloads, thumbnails, json, and ass files,
+        while strictly keeping Whisper models and config files intact."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_data = Path(temp_dir) / "data"
+            temp_dl = Path(temp_dir) / "Downloads"
+            temp_data.mkdir(parents=True)
+            temp_dl.mkdir(parents=True)
+
+            # 1. Create protected files
+            (temp_data / "config.json").write_text("{}", encoding="utf-8")
+            (temp_data / "cookies.txt").write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+            (temp_data / "weights.json").write_text("{}", encoding="utf-8")
+            (temp_data / "social_accounts.json").write_text("{}", encoding="utf-8")
+            (temp_data / "feedback.jsonl").write_text("", encoding="utf-8")
+            models_dir = temp_data / "models" / "faster-whisper-small"
+            models_dir.mkdir(parents=True)
+            (models_dir / "model.bin").write_bytes(b"dummy_whisper_weights")
+            creator_dir = temp_data / "creators" / "streamer1"
+            creator_dir.mkdir(parents=True)
+            (creator_dir / "profile.json").write_text('{"name": "Streamer"}', encoding="utf-8")
+            (temp_data / "creators" / "creators.json").write_text("[]", encoding="utf-8")
+
+            # 2. Create disposable files to be purged
+            exports_dir = temp_data / "exports"
+            exports_dir.mkdir(parents=True)
+            (exports_dir / "clip1.mp4").write_bytes(b"video_bytes")
+            (exports_dir / "clip1.ass").write_text("[Script Info]", encoding="utf-8")
+            (exports_dir / "clip1.srt").write_text("1\n00:00:00 --> 00:00:02\nHi", encoding="utf-8")
+            (exports_dir / "clip1.json").write_text("{}", encoding="utf-8")
+            (exports_dir / "clip1.jpg").write_bytes(b"thumbnail_bytes")
+
+            slices_dir = temp_data / "slices"
+            slices_dir.mkdir(parents=True)
+            (slices_dir / "slice_01.mp4").write_bytes(b"slice_bytes")
+            (slices_dir / "slice_01.json").write_text("{}", encoding="utf-8")
+            (slices_dir / "slice_01_words.json").write_text("[]", encoding="utf-8")
+            (slices_dir / "slice_01_preview.jpg").write_bytes(b"jpg_bytes")
+
+            tmp_dir = temp_data / "tmp" / "frames"
+            tmp_dir.mkdir(parents=True)
+            (tmp_dir / "frame_0.jpg").write_bytes(b"frame_bytes")
+            (temp_data / "tmp" / "temp.wav").write_bytes(b"audio_bytes")
+
+            yt_cache = temp_data / "yt_test123"
+            yt_cache.mkdir(parents=True)
+            (yt_cache / "frame_0.jpg").write_bytes(b"frame_bytes")
+            (yt_cache / "source.json").write_text("{}", encoding="utf-8")
+
+            creator_clips = creator_dir / "clips"
+            creator_clips.mkdir(parents=True)
+            (creator_clips / "c1.mp4").write_bytes(b"creator_clip")
+            creator_videos = creator_dir / "videos"
+            creator_videos.mkdir(parents=True)
+            (creator_videos / "v1.mp4").write_bytes(b"creator_raw_video")
+
+            # Loose files in data
+            (temp_data / "loose_clip.mp4").write_bytes(b"loose_video")
+            (temp_data / "loose_sub.ass").write_text("sub", encoding="utf-8")
+
+            # Downloads folder
+            (temp_dl / "downloaded_clip.mp4").write_bytes(b"downloaded_video")
+
+            # Execute shutdown cleanup
+            result = cleanup_on_shutdown(data_dir=temp_data, downloads_dir=temp_dl)
+            self.assertGreater(result["deleted_files"], 0)
+
+            # Check that disposable files are completely gone
+            self.assertFalse((exports_dir / "clip1.mp4").exists())
+            self.assertFalse((exports_dir / "clip1.ass").exists())
+            self.assertFalse((exports_dir / "clip1.srt").exists())
+            self.assertFalse((exports_dir / "clip1.json").exists())
+            self.assertFalse((exports_dir / "clip1.jpg").exists())
+            self.assertFalse((slices_dir / "slice_01.mp4").exists())
+            self.assertFalse((slices_dir / "slice_01.json").exists())
+            self.assertFalse((slices_dir / "slice_01_words.json").exists())
+            self.assertFalse((slices_dir / "slice_01_preview.jpg").exists())
+            self.assertFalse((temp_data / "tmp" / "temp.wav").exists())
+            self.assertFalse(yt_cache.exists())
+            self.assertFalse((creator_clips / "c1.mp4").exists())
+            self.assertFalse((creator_videos / "v1.mp4").exists())
+            self.assertFalse((temp_data / "loose_clip.mp4").exists())
+            self.assertFalse((temp_data / "loose_sub.ass").exists())
+            self.assertFalse((temp_dl / "downloaded_clip.mp4").exists())
+
+            # Check that protected configs and whisper models are 100% intact
+            self.assertTrue((temp_data / "config.json").exists())
+            self.assertTrue((temp_data / "cookies.txt").exists())
+            self.assertTrue((temp_data / "weights.json").exists())
+            self.assertTrue((temp_data / "social_accounts.json").exists())
+            self.assertTrue((temp_data / "feedback.jsonl").exists())
+            self.assertTrue((models_dir / "model.bin").exists())
+            self.assertTrue((temp_data / "creators" / "creators.json").exists())
+            self.assertTrue((creator_dir / "profile.json").exists())
+
+    def test_server_lifespan_calls_cleanup_on_shutdown(self):
+        """Verifies that FastAPI lifespan triggers cleanup_on_shutdown upon exit."""
+        from clipiest.server import lifespan, app
+        with patch("clipiest.server.cleanup_on_shutdown") as mock_cleanup:
+            async def run_cycle():
+                async with lifespan(app):
+                    pass
+            asyncio.run(run_cycle())
+            mock_cleanup.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

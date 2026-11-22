@@ -14,6 +14,7 @@ import subprocess
 import re
 import urllib.request
 import asyncio
+import atexit
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -41,7 +42,10 @@ from .vision.facecam import detect_facecam
 from .ai.learn import record_feedback, load_weights
 from .ai.providers import list_supported_providers, test_llm_connection, fetch_models_from_provider, fetch_models_with_url
 from .live.session import LiveClipManager
-from .storage.manager import get_disk_info, open_folder_in_os
+from .storage.manager import (
+    get_disk_info, open_folder_in_os, cleanup_on_shutdown,
+    is_protected_storage_file, PROTECTED_STORAGE_FILENAMES, PROTECTED_STORAGE_DIRS
+)
 from . import creators
 
 @asynccontextmanager
@@ -50,6 +54,10 @@ async def lifespan(app: FastAPI):
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
         pass
+    finally:
+        cleanup_on_shutdown()
+
+atexit.register(cleanup_on_shutdown)
 
 app = FastAPI(title="Clipiest API", version="1.0.0", lifespan=lifespan)
 
@@ -1026,36 +1034,8 @@ def api_download_file(filename: str):
             )
     raise HTTPException(404, "File not found for download.")
 
-PROTECTED_STORAGE_FILENAMES = {
-    "config.json",
-    "cookies.txt",
-    "weights.json",
-    "feedback.jsonl",
-    "creators.json",
-    "creator.json",
-    "profile.json",
-    "ai.json",
-    "social_accounts.json",
-    "CACHEDIR.TAG",
-}
-
-PROTECTED_STORAGE_DIRS = {
-    "models",
-    ".git",
-    ".locks",
-}
-
-def is_protected_storage_file(p: Path) -> bool:
-    """Returns True if the file is a sensitive system configuration or protected model file."""
-    if p.name in PROTECTED_STORAGE_FILENAMES:
-        return True
-    if any(part in PROTECTED_STORAGE_DIRS for part in p.parts):
-        return True
-    if p.suffix.lower() in (".env", ".key", ".token", ".py", ".pyc"):
-        return True
-    if "creators" in p.parts and p.suffix.lower() == ".json":
-        return True
-    return False
+# PROTECTED_STORAGE_FILENAMES, PROTECTED_STORAGE_DIRS, and is_protected_storage_file
+# are imported from .storage.manager
 
 @app.get("/api/storage/files")
 def api_get_storage_files():
@@ -1131,6 +1111,12 @@ def api_clean_tmp():
             except Exception:
                 pass
     return {"success": True, "cleaned": count}
+
+@app.post("/api/storage/clean-all")
+def api_clean_all():
+    """Step 5: Safely purges all generated clips, downloads, thumbnails, slices, and temporary files."""
+    res = cleanup_on_shutdown()
+    return {"success": True, **res}
 
 # -------------------------------------------------------------
 # YouTube Authentication & Cookies Management
