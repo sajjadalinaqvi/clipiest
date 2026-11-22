@@ -1,177 +1,220 @@
-# Clipiest — LinkedIn Launch Posts & Organic Growth Strategy
+# Clipiest — LinkedIn Launch Captions & Growth Playbook
 
-A complete marketing playbook, copyable LinkedIn post variations, and organic viral growth strategies for **Clipiest** (100% Free & Open-Source AI Video Clipping Engine).
+> **"To all the clippers out there: I built this open-source platform for you."**  
+> *Author: Sajjad Ali Naqvi | Date: November 2026*  
+> *100% Free & Open-Source AI Video Clipping Engine*  
+> *GitHub:* [https://github.com/sajjadalinaqvi/clipiest](https://github.com/sajjadalinaqvi/clipiest)  
+> *Setup Guide PDF (Google Drive):* [Download Guide](https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing)
 
 ---
 
-## PART 1: 4 LINKEDIN POST CAPTIONS (CHOOSE OR ROTATE)
+## PART 1: LINKEDIN LAUNCH CAPTIONS (READY TO COPY & POST)
 
-### OPTION 1: The Founder Story & "I Built an Alternative" (Recommended Main Post)
+---
+
+### OPTION 1: "To All Clippers Out There" (Primary Recommended Launch Post)
+*Best for: Maximum emotional resonance, virality, founder authenticity, and developer goodwill.*
 
 ```text
-I got tired of paying $30/month for AI video clipping tools that:
-• Put watermarks on my videos
-• Gatekeep 1080p rendering behind enterprise tiers
-• Limit me to 60 processing minutes a month
-• Send my unreleased streams to remote cloud servers
+To all the clippers out there: I built this open-source platform for you. ❤️
 
-So over the last few weeks, I built an alternative.
+If you're clipping 3-hour Twitch streams, YouTube podcasts, or gaming VODs for TikTok and YouTube Shorts, you already know the frustration:
+• $30 to $50/month SaaS subscription paywalls
+• Watermarks slapped on your 1080p exports
+• 60-minute monthly upload limits that run out in two days
+• Cloud rendering queues that take 20 minutes per clip
 
-Meet Clipiest — a 100% free, local, open-source AI video clipping engine. 🚀
+You shouldn't have to pay a monthly tax just to turn horizontal footage into vertical content.
 
-Here is what it does:
-1. Takes any YouTube link, Twitch VOD, or local MP4.
-2. Transcribes dialogue with 98% word-level accuracy using local Whisper (zero API fees).
-3. Connects directly to your local LLM (LM Studio or Ollama) or Gemini/OpenAI to scout the funniest, most viral creator moments based on retention formulas.
-4. Auto-detects facecams and frames them into 11 vertical 9:16 layouts with animated word-by-word captions (MrBeast, GTA Neon, Bounce Pop).
-5. Directly uploads finished vertical clips to YouTube Shorts, TikTok, and Instagram Reels with 1 click.
+So I spent the last few weeks building an alternative — and today, I'm making it 100% free and open-source for the entire creator community.
+
+Meet Clipiest. 🚀
+
+Here is what Clipiest does right on your machine:
+1. 📥 Universal Intake: Paste any YouTube link, Twitch stream, Kick VOD, or drop a raw MP4.
+2. 🎙️ 100% Local Whisper ASR: Transcribes speech word-for-word on your GPU with zero API bills.
+3. 🧠 Smart AI Moment Scouting: Connects to your local AI (LM Studio / Ollama) or OpenAI/Gemini to detect high-retention hooks, funny banter, and viral clutch moments.
+4. 📐 11 Native 9:16 Layouts: Drag-and-drop Facecam and Gameplay bounding boxes, split screens, PIP, or blurred fills.
+5. ✨ Animated Karaoke Subtitles: 7 viral word-timed styles (MrBeast pop, neon glow, bold outline) with 14 opening hook badges.
+6. 🚀 1-Click Multi-Platform Publishing: Connect your YouTube Shorts, TikTok, and Instagram Reels to publish directly from the studio.
 
 Best part?
-Zero subscriptions. Zero credit tokens. 100% runs on your machine using your GPU (NVIDIA NVENC / Intel QSV / CPU).
+Zero monthly fees. Zero watermarks. Zero cloud queues. Everything runs locally on your PC using your hardware (NVIDIA NVENC, Intel QSV, or CPU).
 
-I’ve compiled a complete 15-page "GTA VI Edition Creator Setup Notebook" with a 1-click terminal setup prompt so anyone can get it running in under 3 minutes.
+--------------------------------------------------
+⚡ QUICK 60-SECOND SETUP GUIDE:
+--------------------------------------------------
+1. Clone the repository:
+   git clone https://github.com/sajjadalinaqvi/clipiest.git
+2. Start Clipiest (auto-provisions .venv & dependencies):
+   • Windows: Double-click start_clipiest.bat
+   • Linux/macOS: Run ./start_clipiest.sh
+   (Or feed our 1-click prompt to Google Antigravity / your AI agent!)
+3. Connect your AI brain:
+   • Local Offline: Launch LM Studio on port 1234 (meta-llama-3.1-8b-instruct)
+   • Cloud API: Select OpenAI and paste your key (gpt-4o-mini)
+4. Open http://127.0.0.1:8780 in your browser, paste a link, and export your vertical short!
 
-👉 GitHub Repository: https://github.com/sajjadalinaqvi/clipiest
-👉 The complete setup guide is attached below as a PDF carousel!
+--------------------------------------------------
+🔗 LINKS & RESOURCES:
+--------------------------------------------------
+📖 Complete 15-Page Setup Guide (PDF):
+https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing
 
-Drop a comment with "CLIPIEST" and I’ll send you the direct 1-click agent prompt.
+💻 GitHub Repository (100% Free & Open Source):
+https://github.com/sajjadalinaqvi/clipiest
 
-What’s your biggest bottleneck when editing short-form video? Let’s discuss in the comments. 👇
+If you believe creators should own their tools and data without subscription traps, drop a ⭐️ on GitHub and share this with an editor or streamer who needs it!
 
-#ArtificialIntelligence #OpenSource #VideoEditing #ContentCreation #Python #MachineLearning #Startups #BuildInPublic #LocalAI #ShortFormVideo
+What feature should we build next? Let's discuss below. 👇
+
+#OpenSource #VideoEditing #ContentCreation #Clippers #Streamers #ArtificialIntelligence #Python #MachineLearning #BuildInPublic #LocalAI #VideoMarketing
 ```
 
 ---
 
-### OPTION 2: The Contrarian / Value-Driven Post (High Shareability)
+### OPTION 2: The Value-Packed Tutorial Post (High Saves & Bookmarks)
+*Best for: Educational value, technical authority, and bookmark velocity.*
 
 ```text
-The creator economy has a subscription fatigue problem.
+To every video editor and clipper spending hours manual-cropping streams:
 
-Every single creator tool wants $29/mo, $49/mo, or $99/mo for features that modern laptops can execute locally for free.
+I just open-sourced Clipiest — a 100% free, local AI video clipping studio that turns long streams into viral 9:16 vertical shorts in minutes.
 
-If your machine has a decent GPU, you don't need to rent cloud compute to:
-❌ Transcribe audio
-❌ Find highlight moments
-❌ Crop horizontal video to vertical 9:16
-❌ Burn animated karaoke subtitles
+Here’s the complete zero-cost setup tutorial you can run on your laptop today: 🧵
 
-That’s why I open-sourced Clipiest.
+Step 1: Clone & Launch
+Open terminal and run:
+git clone https://github.com/sajjadalinaqvi/clipiest.git
+cd clipiest
+Windows: run start_clipiest.bat
+Linux/macOS: run ./start_clipiest.sh
+The starter script automatically sets up the Python virtual environment and installs all requirements.
 
-It runs 100% locally on your desktop:
-⚡ Faster-Whisper for zero-cost speech-to-text
-⚡ Local LLMs (Llama 3.2, Qwen 2.5, Mistral) via LM Studio / Ollama
-⚡ Hardware-accelerated FFmpeg rendering (NVENC / QSV)
-⚡ Direct 1-click publishing to YouTube Shorts, TikTok, and Reels
+Step 2: Choose Your AI Brain
+Clipiest supports two flexible lanes:
+• 100% Free Local: Download LM Studio (lmstudio.ai), load meta-llama-3.1-8b-instruct, and start local server on port 1234.
+• Fast Cloud API: Paste your OpenAI API key and select gpt-4o-mini.
 
-No usage meters. No watermarks. No monthly invoices.
+Step 3: Frame Your Video in 9:16
+Paste any YouTube/Twitch URL or drop an MP4. Drag the Cyan Facecam Box and Purple Gameplay Box directly over the video storyboard. Pick from 11 native layouts (Stack, Picture-in-Picture, Blur Fill, Side-by-Side).
 
-Check out the full open-source repo on GitHub:
-🔗 https://github.com/sajjadalinaqvi/clipiest
+Step 4: Style Your Subtitles
+Choose from 7 animated ASS typography styles (Word-by-word karaoke, Pop bounce, Clean outline) and pick an attention-grabbing hook badge (Hot Take, Reaction, How-To).
 
-If you find it useful, give it a ⭐️ on GitHub! It helps more creators discover free tools.
+Step 5: Direct 1-Click Publishing
+Review your clip in the studio and upload directly to YouTube Shorts, TikTok, and Instagram Reels with 1 click.
 
-#OpenSource #Creators #VideoEditing #AITools #TechInnovation #SoftwareEngineering
+No subscription tiers. No watermark ransom. No data leaves your machine.
+
+📥 Download the complete Step-by-Step PDF Guide:
+https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing
+
+⭐️ Star the project on GitHub:
+https://github.com/sajjadalinaqvi/clipiest
+
+Save this post for your next editing session, and tag a creator who needs to stop paying monthly clipper fees!
+
+#VideoEditing #ContentStrategy #AI #OpenSourceSoftware #Streamers #YouTubeShorts #TikTokMarketing #Developers #Productivity
 ```
 
 ---
 
-### OPTION 3: The Carousel / Guide Teaser Post (For Document Attachment)
+### OPTION 3: The "SaaS Fatigue / Beat the Subscription" Angle
+*Best for: Provoking debate, high comment volume, and sharing among indie hackers.*
 
 ```text
-How to turn a 2-hour livestream into 5 viral vertical clips — completely free. 🧵
+SaaS companies charge creators $30 to $50 every month for things a modern GPU can compute in 30 seconds for free:
 
-Most people think you need a team of video editors or expensive SaaS tools to clip podcasts and streams for TikTok and YouTube Shorts.
+❌ Transcribing dialogue ($10/mo value)
+❌ Scoring emotional peaks with an LLM ($10/mo value)
+❌ Cropping 16:9 to vertical 9:16 with FFmpeg ($15/mo value)
+❌ Burning animated subtitle fonts ($15/mo value)
 
-You don't.
+To all the clippers, stream editors, and bootstrapped creators out there:
+I made this open-source platform for you so you never have to pay a video clipping subscription again.
 
-Swipe through the carousel below to see how Clipiest automates the entire workflow locally:
+Clipiest is 100% free, local, and open-source.
 
-📄 Slide 1-3: One-click agent auto-setup (Claude Code / Terminal)
-📄 Slide 4-6: Connecting local AI models (LM Studio & Ollama)
-📄 Slide 7-9: Interactive Facecam + Gameplay visual cropping & 11 layouts
-📄 Slide 10-12: Word-timed animated ASS typography & Re-Edit Studio
-📄 Slide 13-15: Direct 1-click multi-platform publishing
+What you get out of the box:
+✅ Local Faster-Whisper ASR (zero API cost, GPU accelerated)
+✅ Local LLM integration (LM Studio & Ollama) + OpenAI/Gemini support
+✅ 11 vertical layout geometries with interactive bounding box canvas
+✅ 7 animated subtitle styles with rhythm-timed word highlighting
+✅ Direct multi-platform publishing (Shorts, TikTok, Reels)
+✅ YouTube age-restriction cookies bypass support
 
-Everything is open-source, MIT licensed, and free forever.
+🚀 Quick Setup:
+1. git clone https://github.com/sajjadalinaqvi/clipiest.git
+2. Run start_clipiest.bat (Windows) or ./start_clipiest.sh (Linux/Mac)
+3. Connect LM Studio (http://127.0.0.1:1234/v1) or OpenAI key in Settings
+4. Open http://127.0.0.1:8780 and ship your first clip!
 
-💾 Save this post for your next editing session!
-GitHub repo link is in the first comment. 👇
+Links:
+📄 Full Setup Guide (PDF): https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing
+💻 GitHub Codebase: https://github.com/sajjadalinaqvi/clipiest
 
-#Productivity #VideoMarketing #SocialMediaStrategy #ContentStrategy #AITools
+Take back your workflow. Keep your data private. Stop paying monthly subscriptions.
+
+#OpenSource #Startups #SoftwareEngineering #CreatorEconomy #VideoEditing #AITools #IndieHacker #LocalAI
 ```
 
 ---
 
-### OPTION 4: The Deep Tech / Engineering Post (For Devs & AI Engineers)
+### OPTION 4: The Carousel / Attachment Teaser
+*Best for: Posting alongside the Google Drive PDF as a native LinkedIn Document Carousel.*
 
 ```text
-Building a local-first video processing pipeline is all about optimizing the latency stack.
+To all the clippers and video editors out there:
 
-Here is the architectural breakdown behind Clipiest, an open-source AI clipping engine I built with Python, FastAPI, and FFmpeg:
+I packaged a complete 15-page visual setup guide on how to turn 2-hour streams into viral vertical clips using free open-source AI.
 
-1. Ingestion & Demuxing:
-Instead of re-encoding the entire video, Clipiest extracts audio directly with yt-dlp and computes excitation energy waveforms in parallel.
+Swipe through the carousel pages below: 📄👇
 
-2. ASR & Word-Level Alignment:
-Uses `faster-whisper` (CTranslate2) with Batched Inference on CUDA. It outputs exact start/end timestamps per word, allowing dynamic rhythm-based caption grouping.
+• Page 01: The 5-Step Clipper Route
+• Page 02-03: Google Antigravity & Agentic Autonomous Workspace
+• Page 04-06: 1-Click Copy-Ready Terminal Setup Prompts
+• Page 07: Connecting Local LM Studio vs. OpenAI Cloud Brain
+• Page 08: Universal Link Intake, MP4 Uploads & Cookies Bypass
+• Page 09: 11 Layouts, Facecam Bounding Boxes & Animated Subtitles
+• Page 10: Re-Edit Studio & 1-Click Publishing to Shorts, TikTok, and Reels
 
-3. Creator-Centric AI Scouting:
-Instead of blindly detecting loud noises, Clipiest feeds the timestamped transcript into a local LLM with a specialized prompt that evaluates emotional volatility, comedic payoff, and hook retention formulas.
+🛠️ Quick Start:
+1. Clone: git clone https://github.com/sajjadalinaqvi/clipiest.git
+2. Run start_clipiest.bat (Windows) or ./start_clipiest.sh (Linux/macOS)
+3. Connect LM Studio on port 1234 or your OpenAI key
+4. Open http://127.0.0.1:8780 and start clipping!
 
-4. 11 Native 9:16 Filtergraphs:
-FFmpeg filtergraphs composite dynamic dual-crop regions (Facecam + Gameplay), applying boxblur backgrounds, circular masks, and picture-in-picture with hardware NVENC / QSV acceleration in a single encoding pass.
+📥 Download High-Res PDF Guide (Google Drive):
+https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing
 
-5. Direct Social Publishing:
-Built-in integrations for YouTube Data API v3, TikTok Content Posting API, and Meta Graph API allow creators to publish directly from the studio.
+⭐️ GitHub Repository (Free & Open Source):
+https://github.com/sajjadalinaqvi/clipiest
 
-Stack: Python 3.11, FastAPI, FFmpeg, faster-whisper, LM Studio / Ollama, Vanilla JS / CSS.
+Save this document and share it with your editing team!
 
-Source code is available on GitHub:
-👉 https://github.com/sajjadalinaqvi/clipiest
-
-PRs, feature requests, and feedback are very welcome!
-
-#Python #SoftwareArchitecture #FFmpeg #MachineLearning #SystemDesign #OpenSourceSoftware
+#Creators #VideoProduction #SocialMediaTools #AITools #OpenSource #LinkedInCreators #Shorts #TikTok
 ```
 
 ---
 
-## PART 2: ORGANIC MARKETING & GROWTH STRATEGY FOR CLIPIEST
+## PART 2: LINKEDIN LAUNCH TIMING & ENGAGEMENT CHECKLIST
 
-Because Clipiest is **100% Free and Open-Source**, the best marketing playbook focuses on **developer goodwill, creator utility, and community-driven distribution**.
+To maximize algorithmic reach when you publish your post:
 
-### 1. GitHub Star Velocity & Trending Playbook
-- **Add to Curated Lists**: Submit PRs to popular repositories:
-  - `awesome-ai`
-  - `awesome-selfhosted`
-  - `awesome-python`
-  - `awesome-local-ai`
-- **Optimize README**:
-  - Keep high-converting visual badges (`GitHub Stars`, `MIT License`, `Python 3.11+`, `FFmpeg NVENC`).
-  - Embed animated GIFs of the Studio dragging the Cyan/Purple bounding boxes and burning animated captions.
-  - Add a 1-click "Run in 3 Minutes" copyable command right at the top.
-
-### 2. Reddit Community Distribution (High Impact, Zero Ad Spend)
-Post genuine value tutorials with video demos in these targeted communities:
-- **r/LocalLLaMA** (400k+ members): "I built a free open-source tool that uses your local LM Studio / Ollama models to auto-clip streams and podcasts into vertical TikToks/Shorts."
-- **r/selfhosted** (350k+ members): "Clipiest: Self-hosted alternative to Opus Clip. Runs locally with NVENC & local Whisper. No telemetry, no subscription."
-- **r/Twitch** & **r/streaming**: "Free tool to automatically make 9:16 vertical TikToks from your stream VODs with animated captions."
-- **r/ContentCreation** & **r/YouTube_startups**: "Step-by-step guide to clipping long podcasts into shorts without paying for Opus Clip or CapCut."
-
-### 3. Twitter / X Viral Launch Thread
-- **Format**: 1 demo video hook + 8-step visual breakdown.
-- **Hook**: *"Most video editing SaaS charge $30/month just to crop your video to 9:16 and add subtitles. Today I’m releasing Clipiest — 100% open-source, runs locally on your PC, zero fees forever. Here’s how it works 👇"*
-- Tag popular AI curators: `@levelsio`, `@hwchase17`, `@swyx`, `@bindureddy`, `@amasad`.
-
-### 4. Creator Outreach & Clipping Communities
-- **Whop & Discord Clipping Communities**: Hundreds of teenagers and young creators clip streams for MrBeast, Adin Ross, Kai Cenat, and gaming orgs to earn campaign bounties on Vyro and Whop.
-- Clipiest gives them an enterprise-grade automated clipping workstation without eating into their earnings.
-- Share the PDF guide in Discord editing servers (`Video Editing Hub`, `Short Form Creators`, `Premiere Pro Discord`).
-
-### 5. Product Hunt Launch Plan
-- **Tagline**: *"Clipiest — The 100% Free & Open-Source AI Video Clipping Engine."*
-- **Assets**:
-  - 1-minute energetic trailer video showing link paste to finished 9:16 vertical clip.
-  - 5 screenshots with neon cyberpunk aesthetic highlighting the 11 layouts, bounding box editor, and connected social accounts.
-  - Maker comment explaining the philosophy of local-first privacy and beating subscription fatigue.
+1. **Attach the PDF as a Document**:
+   - Upload the PDF from your Google Drive link directly into LinkedIn using the **"Add a document"** button. LinkedIn documents generate 3x–5x more impressions than text-only posts because users swipe through slides.
+2. **First 60 Minutes Engagement**:
+   - Post on **Tuesday, Wednesday, or Thursday between 8:00 AM – 10:30 AM** (your target audience's local time).
+   - Reply to every early comment within 10–15 minutes to trigger LinkedIn's comment velocity algorithm.
+3. **Pin the First Comment**:
+   - Add a comment:
+     ```text
+     Here are the direct links:
+     ⭐️ GitHub: https://github.com/sajjadalinaqvi/clipiest
+     📥 PDF Setup Guide: https://drive.google.com/file/d/1BSyUjU2Lwxtuc3aLOLvrJRtJzXklNC36/view?usp=sharing
+     
+     If you have any questions during setup, ask here and I'll help you get it running!
+     ```
+4. **Distribute to Communities**:
+   - Cross-post the GitHub link and PDF guide to relevant Reddit communities (`r/LocalLLaMA`, `r/selfhosted`, `r/Twitch`, `r/ContentCreation`) and Discord video editing servers.
