@@ -167,7 +167,7 @@ Take back your workflow. Keep your data private. Stop paying monthly subscriptio
 ```text
 To all the clippers and video editors out there:
 
-I packaged a complete 15-page visual setup guide on how to turn 2-hour streams into viral vertical clips using free open-source AI.
+I packaged a complete 10-page visual setup guide on how to turn 2-hour streams into viral vertical clips using free open-source AI.
 
 Swipe through the carousel pages below: 📄👇
 
@@ -182,7 +182,7 @@ Swipe through the carousel pages below: 📄👇
 🛠️ Quick Start:
 1. Clone: git clone https://github.com/sajjadalinaqvi/clipiest.git
 2. Run start_clipiest.bat (Windows) or ./start_clipiest.sh (Linux/macOS)
-3. Connect LM Studio on port 1234 or your OpenAI key
+3. Connect LM Studio on port 1234 or use your OpenAI key
 4. Open http://127.0.0.1:8780 and start clipping!
 
 📥 Download High-Res PDF Guide (Google Drive):
@@ -218,3 +218,31 @@ To maximize algorithmic reach when you publish your post:
      ```
 4. **Distribute to Communities**:
    - Cross-post the GitHub link and PDF guide to relevant Reddit communities (`r/LocalLLaMA`, `r/selfhosted`, `r/Twitch`, `r/ContentCreation`) and Discord video editing servers.
+
+---
+
+## PART 3: PNG MARKETING CARDS CATALOG
+
+All cards are rendered in high resolution and saved in [`docs/marketing/cards/`](file:///d:/Projects/Clipiest/docs/marketing/cards/):
+
+### A. LinkedIn Standalone Marketing Cards (4:5 Portrait Ratio — 1080 × 1350 px)
+1. **[marketing_01_clipper_manifesto.png](file:///d:/Projects/Clipiest/docs/marketing/cards/marketing_01_clipper_manifesto.png)**  
+   *The Clipper Manifesto & Disruption Comparison:* Commercial SaaS ($30–$50/mo, watermarks, 60min caps, slow queues) vs. Clipiest ($0 forever, zero watermarks, unlimited, local GPU).
+2. **[marketing_02_11_layouts.png](file:///d:/Projects/Clipiest/docs/marketing/cards/marketing_02_11_layouts.png)**  
+   *11 Native 9:16 Video Layouts:* Complete catalog of dual-box framing, stack, inverted stack, PIP, circle mask, and blurred background fills.
+3. **[marketing_03_local_ai_stack.png](file:///d:/Projects/Clipiest/docs/marketing/cards/marketing_03_local_ai_stack.png)**  
+   *The 100% Local AI Pipeline:* Architecture diagram showing ingestion, Faster-Whisper ASR, LM Studio/Ollama moment scouting, FFmpeg NVENC, and 1-click publishing.
+4. **[marketing_04_quick_setup_guide.png](file:///d:/Projects/Clipiest/docs/marketing/cards/marketing_04_quick_setup_guide.png)**  
+   *Get Started in 60 Seconds:* 4-step quickstart commands for Windows/Linux/Mac with download links.
+
+### B. Canva Exported A4 Setup Cards (Standard ISO 216 — 794 × 1123 px)
+1. [card_01_cover.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_01_cover.png) — Cover with GTA VI Logo & GitHub Link
+2. [card_02_the_route.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_02_the_route.png) — 5 Steps from Link to Clip
+3. [card_03_before_installation.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_03_before_installation.png) — Google Antigravity Setup & Tooltip Box
+4. [card_04_agent_prompt_part1.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_04_agent_prompt_part1.png) — Machine & GPU Inspection
+5. [card_05_agent_prompt_part2.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_05_agent_prompt_part2.png) — Virtual Environment & AI Configuration
+6. [card_06_agent_prompt_part3.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_06_agent_prompt_part3.png) — Server Launch & Export Verification
+7. [card_07_make_ai_ready.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_07_make_ai_ready.png) — LM Studio vs. OpenAI Cloud Brain
+8. [card_08_bring_a_source.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_08_bring_a_source.png) — URL Intake & YouTube Cookies Bypass
+9. [card_09_shape_the_result.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_09_shape_the_result.png) — 11 Layouts & Animated Subtitle Typography
+10. [card_10_export_review_publish.png](file:///d:/Projects/Clipiest/docs/marketing/cards/card_10_export_review_publish.png) — Re-Edit Studio & 1-Click Multi-Platform Publishing
