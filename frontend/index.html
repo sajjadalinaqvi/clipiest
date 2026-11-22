@@ -12,7 +12,7 @@
     rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
   <link rel="alternate icon" type="image/png" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/style.css?v=2.2">
+  <link rel="stylesheet" href="/static/style.css?v=2.3">
 </head>
 
 <body class="theme-dark">
@@ -517,12 +517,11 @@
           </div>
         </div>
 
-        <!-- Sub Tabs: LLM & Whisper Settings | Data & Storage Manager -->
+        <!-- Sub Tabs: LLM & Whisper Settings | Connected Accounts | Data & Storage Manager -->
         <div class="sub-nav-tabs">
-          <button class="sub-tab-btn active" data-subtab="settings-llm" id="subtab-btn-llm">⚡ AI Model &amp; Whisper
-            Settings</button>
-          <button class="sub-tab-btn" data-subtab="settings-storage" id="subtab-btn-storage">💾 Data &amp; Storage
-            Manager (data/)</button>
+          <button class="sub-tab-btn active" data-subtab="settings-llm" id="subtab-btn-llm">⚡ AI Model &amp; Whisper Settings</button>
+          <button class="sub-tab-btn" data-subtab="settings-social" id="subtab-btn-social">🌐 Connected Accounts (YouTube, TikTok, Instagram)</button>
+          <button class="sub-tab-btn" data-subtab="settings-storage" id="subtab-btn-storage">💾 Data &amp; Storage Manager (data/)</button>
         </div>
 
         <!-- Sub Pane 1: LLM & Whisper -->
@@ -585,7 +584,146 @@
           </div>
         </div>
 
-        <!-- Sub Pane 2: Data & Storage Manager -->
+        <!-- Sub Pane 2: Connected Accounts & Direct Publishing -->
+        <div id="subpane-settings-social" class="subpane" hidden>
+          <div class="panel">
+            <div class="panel-title">
+              <div>
+                <h3>Social Media &amp; Direct Publishing</h3>
+                <p class="muted" style="font-size:13px;margin-top:2px;">
+                  Connect your accounts to publish rendered 9:16 vertical clips directly to YouTube Shorts, TikTok, and Instagram Reels with one click.
+                </p>
+              </div>
+              <button id="social-refresh-btn" class="btn-secondary btn-xs">🔄 Refresh Accounts</button>
+            </div>
+
+            <!-- Social Platforms 3-Column Grid -->
+            <div class="social-platforms-grid">
+              
+              <!-- YouTube Shorts -->
+              <div class="social-card" id="social-card-youtube">
+                <div class="social-card-header">
+                  <div class="social-brand">
+                    <span class="social-icon yt-icon">▶</span>
+                    <div>
+                      <h4>YouTube Shorts</h4>
+                      <small class="muted">Google Data API v3</small>
+                    </div>
+                  </div>
+                  <span id="yt-status-badge" class="badge">Checking...</span>
+                </div>
+                <div class="social-card-body">
+                  <div class="stat-line">
+                    <span>Channel:</span>
+                    <b id="yt-channel-lbl">Not Connected</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>Default Privacy:</span>
+                    <b id="yt-privacy-lbl">Public</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>Auto #Shorts Tag:</span>
+                    <b id="yt-shorts-tag-lbl">Enabled</b>
+                  </div>
+                </div>
+                <div class="social-card-actions">
+                  <button type="button" class="btn-primary btn-sm" id="yt-configure-btn">⚙️ Configure</button>
+                  <button type="button" class="btn-secondary btn-sm" id="yt-test-btn">⚡ Test</button>
+                  <button type="button" class="btn-danger btn-sm" id="yt-disconnect-btn" style="display:none;">Disconnect</button>
+                </div>
+              </div>
+
+              <!-- TikTok -->
+              <div class="social-card" id="social-card-tiktok">
+                <div class="social-card-header">
+                  <div class="social-brand">
+                    <span class="social-icon tt-icon">🎵</span>
+                    <div>
+                      <h4>TikTok</h4>
+                      <small class="muted">Content Posting API</small>
+                    </div>
+                  </div>
+                  <span id="tt-status-badge" class="badge">Checking...</span>
+                </div>
+                <div class="social-card-body">
+                  <div class="stat-line">
+                    <span>Account:</span>
+                    <b id="tt-account-lbl">Not Connected</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>Default Privacy:</span>
+                    <b id="tt-privacy-lbl">Public</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>Duet / Stitch:</span>
+                    <b id="tt-features-lbl">Allowed</b>
+                  </div>
+                </div>
+                <div class="social-card-actions">
+                  <button type="button" class="btn-primary btn-sm" id="tt-configure-btn">⚙️ Configure</button>
+                  <button type="button" class="btn-secondary btn-sm" id="tt-test-btn">⚡ Test</button>
+                  <button type="button" class="btn-danger btn-sm" id="tt-disconnect-btn" style="display:none;">Disconnect</button>
+                </div>
+              </div>
+
+              <!-- Instagram Reels -->
+              <div class="social-card" id="social-card-instagram">
+                <div class="social-card-header">
+                  <div class="social-brand">
+                    <span class="social-icon ig-icon">📸</span>
+                    <div>
+                      <h4>Instagram Reels</h4>
+                      <small class="muted">Meta Graph API</small>
+                    </div>
+                  </div>
+                  <span id="ig-status-badge" class="badge">Checking...</span>
+                </div>
+                <div class="social-card-body">
+                  <div class="stat-line">
+                    <span>Instagram Profile:</span>
+                    <b id="ig-account-lbl">Not Connected</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>Share to Feed:</span>
+                    <b id="ig-feed-lbl">Yes</b>
+                  </div>
+                  <div class="stat-line">
+                    <span>API Mode:</span>
+                    <b>Reels Container v19.0</b>
+                  </div>
+                </div>
+                <div class="social-card-actions">
+                  <button type="button" class="btn-primary btn-sm" id="ig-configure-btn">⚙️ Configure</button>
+                  <button type="button" class="btn-secondary btn-sm" id="ig-test-btn">⚡ Test</button>
+                  <button type="button" class="btn-danger btn-sm" id="ig-disconnect-btn" style="display:none;">Disconnect</button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Global Upload & Publishing Defaults -->
+            <div class="panel" style="margin-top:20px;background:var(--bg-card);border:1px solid var(--border);">
+              <div class="panel-title">
+                <h4>Publishing Presets &amp; Defaults</h4>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="cfg-field">
+                  <label>Default Caption Signature / Watermark</label>
+                  <input type="text" id="social-default-signature" value="🔥 Clipped with @Clipiest" placeholder="e.g. 🔥 Clipped with @Clipiest">
+                </div>
+                <div class="cfg-field">
+                  <label>Default Viral Hashtags</label>
+                  <input type="text" id="social-default-tags" value="#shorts #viral #fyp #reels #gaming #streamer" placeholder="e.g. #shorts #viral #fyp">
+                </div>
+              </div>
+              <div style="margin-top:14px;display:flex;justify-content:flex-end;">
+                <button type="button" id="save-social-defaults-btn" class="btn-primary btn-sm">Save Publishing Presets</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub Pane 3: Data & Storage Manager -->
         <div id="subpane-settings-storage" class="subpane" hidden>
           <div class="panel">
             <div class="panel-title">
@@ -908,13 +1046,201 @@
         <!-- Dynamic viewer -->
       </div>
       <div class="modal-footer">
+        <button id="media-preview-social-btn" class="btn-primary btn-glow" style="margin-right:auto;">🚀 Upload to Socials</button>
         <a id="media-preview-download-btn" href="#" download class="btn-secondary">↓ Download File</a>
         <button id="media-preview-close-btn" class="btn-ghost">Close</button>
       </div>
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.2"></script>
+  <!-- SOCIAL ACCOUNT CONFIGURATION MODAL -->
+  <div id="social-account-modal" class="modal-overlay" hidden>
+    <div class="modal-card" style="max-width:620px;">
+      <div class="modal-header">
+        <h3 id="social-modal-title">Configure Social Account</h3>
+        <button type="button" id="social-modal-close-btn" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 24px;">
+        <div id="social-modal-alert" class="cfg-status-box" hidden></div>
+
+        <!-- YouTube Fields -->
+        <div id="fields-youtube" class="social-form-section" hidden>
+          <p class="muted" style="font-size:13px;margin-bottom:14px;">
+            Connect YouTube Data API v3 to upload vertical clips directly to <strong>YouTube Shorts</strong>.
+          </p>
+          <div class="cfg-field">
+            <label>OAuth2 Access Token / API Key</label>
+            <input type="password" id="yt-inp-access-token" placeholder="ya29.a0AfH6SMB... or OAuth2 Token">
+          </div>
+          <div class="cfg-field">
+            <label>Google OAuth Client ID (Optional)</label>
+            <input type="text" id="yt-inp-client-id" placeholder="xxxx.apps.googleusercontent.com">
+          </div>
+          <div class="cfg-field">
+            <label>Google OAuth Client Secret (Optional)</label>
+            <input type="password" id="yt-inp-client-secret" placeholder="Client secret key">
+          </div>
+          <div class="cfg-field">
+            <label>Default Privacy</label>
+            <select id="yt-inp-privacy">
+              <option value="public">Public (Visible to everyone)</option>
+              <option value="unlisted">Unlisted (Visible to anyone with link)</option>
+              <option value="private">Private (Only visible to you)</option>
+            </select>
+          </div>
+          <div style="margin-top:10px;">
+            <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="yt-inp-auto-shorts" checked>
+              <span>Automatically append <code>#Shorts</code> to title &amp; description</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- TikTok Fields -->
+        <div id="fields-tiktok" class="social-form-section" hidden>
+          <p class="muted" style="font-size:13px;margin-bottom:14px;">
+            Connect your TikTok creator account via TikTok Content Posting API.
+          </p>
+          <div class="cfg-field">
+            <label>TikTok Access Token</label>
+            <input type="password" id="tt-inp-access-token" placeholder="act.xxxx... or API Bearer Token">
+          </div>
+          <div class="cfg-field">
+            <label>Default Post Privacy</label>
+            <select id="tt-inp-privacy">
+              <option value="PUBLIC_TO_EVERYONE">Public to Everyone</option>
+              <option value="MUTUAL_FOLLOW_FRIENDS">Friends Only</option>
+              <option value="SELF_ONLY">Only Me (Private Draft)</option>
+            </select>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:18px;">
+            <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="tt-inp-duet" checked>
+              <span>Allow Duet</span>
+            </label>
+            <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="tt-inp-stitch" checked>
+              <span>Allow Stitch</span>
+            </label>
+            <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="tt-inp-comments" checked>
+              <span>Allow Comments</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Instagram Fields -->
+        <div id="fields-instagram" class="social-form-section" hidden>
+          <p class="muted" style="font-size:13px;margin-bottom:14px;">
+            Connect your Instagram Creator / Business account via Meta Graph API v19.0.
+          </p>
+          <div class="cfg-field">
+            <label>Instagram Business / Creator Account ID</label>
+            <input type="text" id="ig-inp-account-id" placeholder="e.g. 17841400000000000">
+          </div>
+          <div class="cfg-field">
+            <label>Meta Graph API Long-Lived Access Token</label>
+            <input type="password" id="ig-inp-access-token" placeholder="EAAxxxx... (Token with instagram_content_publish scope)">
+          </div>
+          <div style="margin-top:10px;">
+            <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="ig-inp-share-feed" checked>
+              <span>Also share Reel to Main Instagram Profile Feed</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="social-modal-cancel" class="btn-ghost">Cancel</button>
+        <button type="button" id="social-modal-save" class="btn-primary btn-glow">Save &amp; Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DIRECT SOCIAL PUBLISH MODAL -->
+  <div id="direct-publish-modal" class="modal-overlay" hidden>
+    <div class="modal-card" style="max-width:640px;">
+      <div class="modal-header">
+        <h3>🚀 Direct Publish to Social Media</h3>
+        <button type="button" id="publish-modal-close-btn" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px 24px;">
+        <input type="hidden" id="publish-clip-id">
+        <input type="hidden" id="publish-clip-file">
+
+        <!-- Selected Clip Information -->
+        <div style="display:flex;gap:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;margin-bottom:18px;">
+          <div style="width:48px;height:72px;background:#000;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span style="font-size:20px;">🎬</span>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:11px;color:var(--cyan);font-weight:700;text-transform:uppercase;">9:16 Vertical Video Clip</div>
+            <h4 id="publish-clip-name" style="margin:2px 0 4px;font-size:14px;">clip.mp4</h4>
+            <div id="publish-clip-meta" class="muted" style="font-size:12px;">--</div>
+          </div>
+        </div>
+
+        <!-- Destination Platforms -->
+        <div class="cfg-field">
+          <label>Select Target Platforms</label>
+          <div class="publish-platforms-row">
+            <label class="publish-platform-chip">
+              <input type="checkbox" id="pub-platform-yt" checked>
+              <span class="p-icon yt-icon">▶</span>
+              <b>YouTube Shorts</b>
+            </label>
+            <label class="publish-platform-chip">
+              <input type="checkbox" id="pub-platform-tt" checked>
+              <span class="p-icon tt-icon">🎵</span>
+              <b>TikTok</b>
+            </label>
+            <label class="publish-platform-chip">
+              <input type="checkbox" id="pub-platform-ig" checked>
+              <span class="p-icon ig-icon">📸</span>
+              <b>Instagram Reels</b>
+            </label>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div class="cfg-field">
+          <label>Clip Title &amp; Hook</label>
+          <input type="text" id="pub-clip-title" placeholder="Catchy title (under 100 characters)">
+        </div>
+
+        <!-- Description -->
+        <div class="cfg-field">
+          <label>Caption &amp; Description</label>
+          <textarea id="pub-clip-desc" rows="3" style="width:100%;resize:vertical;" placeholder="Add caption, context, or creator credit..."></textarea>
+        </div>
+
+        <!-- Hashtags -->
+        <div class="cfg-field">
+          <label>Viral Hashtags</label>
+          <input type="text" id="pub-clip-tags" placeholder="#shorts #viral #fyp #reels">
+        </div>
+
+        <!-- Privacy -->
+        <div class="cfg-field">
+          <label>Visibility / Privacy</label>
+          <select id="pub-clip-privacy">
+            <option value="public">Public (Instant Release)</option>
+            <option value="unlisted">Unlisted (Review First)</option>
+            <option value="private">Private (Saved to Drafts)</option>
+          </select>
+        </div>
+
+        <!-- Status Result Box -->
+        <div id="pub-status-box" class="cfg-status-box" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="publish-cancel-btn" class="btn-ghost">Cancel</button>
+        <button type="button" id="publish-submit-btn" class="btn-primary btn-glow">Publish Now 🚀</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2.3"></script>
 </body>
 
 </html>

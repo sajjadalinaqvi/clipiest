@@ -167,6 +167,7 @@ async function init() {
   setupStudioWorkflow();
   setupStorageManager();
   setupCookiesManager();
+  setupSocialManager();
   setupConfigurationEvents();
   setupCreatorEvents();
 
@@ -177,7 +178,8 @@ async function init() {
     loadCaptionStyles(),
     loadCreators(),
     updateTelemetry(),
-    loadLibrary()
+    loadLibrary(),
+    loadSocialAccounts()
   ]);
 
   setInterval(updateTelemetry, 5000);
@@ -1911,24 +1913,38 @@ function pollFinalJob(jobId) {
 function setupStorageManager() {
   // Sub-tabs in Settings
   const subTabLlm = $('subtab-btn-llm');
+  const subTabSocial = $('subtab-btn-social');
   const subTabStorage = $('subtab-btn-storage');
   const paneLlm = $('subpane-settings-llm');
+  const paneSocial = $('subpane-settings-social');
   const paneStorage = $('subpane-settings-storage');
 
-  if (subTabLlm && subTabStorage) {
+  function activateSubTab(activeTab, activePane) {
+    [subTabLlm, subTabSocial, subTabStorage].forEach(b => {
+      if (b) b.classList.toggle('active', b === activeTab);
+    });
+    [paneLlm, paneSocial, paneStorage].forEach(p => {
+      if (p) p.hidden = (p !== activePane);
+    });
+  }
+
+  if (subTabLlm) {
     subTabLlm.onclick = () => {
-      subTabLlm.classList.add('active');
-      subTabStorage.classList.remove('active');
-      if (paneLlm) paneLlm.hidden = false;
-      if (paneStorage) paneStorage.hidden = true;
+      activateSubTab(subTabLlm, paneLlm);
       loadCookieStatus();
     };
+  }
 
+  if (subTabSocial) {
+    subTabSocial.onclick = () => {
+      activateSubTab(subTabSocial, paneSocial);
+      loadSocialAccounts();
+    };
+  }
+
+  if (subTabStorage) {
     subTabStorage.onclick = () => {
-      subTabStorage.classList.add('active');
-      subTabLlm.classList.remove('active');
-      if (paneLlm) paneLlm.hidden = true;
-      if (paneStorage) paneStorage.hidden = false;
+      activateSubTab(subTabStorage, paneStorage);
       loadStorageFiles();
     };
   }
@@ -2083,6 +2099,25 @@ function previewStorageFile(file) {
   dlBtn.href = file.url;
   dlBtn.download = file.name;
 
+  const socBtn = $('media-preview-social-btn');
+  if (socBtn) {
+    if (file.category === 'video') {
+      socBtn.style.display = 'inline-flex';
+      socBtn.onclick = () => {
+        closeMediaModal();
+        openDirectPublishModal({
+          id: file.name.replace(/\.[^/.]+$/, ""),
+          file: file.name,
+          title: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+          description: "Clipped with Clipiest",
+          tags: ["shorts", "reels", "viral", "fyp"]
+        });
+      };
+    } else {
+      socBtn.style.display = 'none';
+    }
+  }
+
   if (file.category === 'video') {
     body.innerHTML = `<video src="${file.url}" controls autoplay style="max-width:100%;max-height:60vh;border-radius:8px;"></video>`;
   } else if (file.category === 'audio') {
@@ -2109,6 +2144,360 @@ function closeMediaModal() {
   const body = $('media-preview-body');
   if (modal) modal.hidden = true;
   if (body) body.innerHTML = '';
+}
+
+// -------------------------------------------------------------
+// Social Media & Direct Multi-Platform Publishing
+// -------------------------------------------------------------
+let activeSocialPlatform = 'youtube';
+
+async function loadSocialAccounts() {
+  try {
+    const data = await api('/api/social/accounts');
+    
+    // YouTube
+    const yt = data.youtube || {};
+    const ytBadge = $('yt-status-badge');
+    const ytChannel = $('yt-channel-lbl');
+    const ytPrivacy = $('yt-privacy-lbl');
+    const ytShortsTag = $('yt-shorts-tag-lbl');
+    const ytDisconnect = $('yt-disconnect-btn');
+
+    if (ytBadge) {
+      if (yt.connected) {
+        ytBadge.textContent = 'Connected';
+        ytBadge.className = 'badge badge-green';
+        if (ytChannel) ytChannel.textContent = yt.channel_title || 'Connected';
+        if (ytDisconnect) ytDisconnect.style.display = 'inline-flex';
+      } else {
+        ytBadge.textContent = 'Not Connected';
+        ytBadge.className = 'badge';
+        if (ytChannel) ytChannel.textContent = 'Not Connected';
+        if (ytDisconnect) ytDisconnect.style.display = 'none';
+      }
+      if (ytPrivacy) ytPrivacy.textContent = (yt.default_privacy || 'public').toUpperCase();
+      if (ytShortsTag) ytShortsTag.textContent = yt.auto_shorts_tag ? 'Enabled' : 'Disabled';
+    }
+
+    // TikTok
+    const tt = data.tiktok || {};
+    const ttBadge = $('tt-status-badge');
+    const ttAccount = $('tt-account-lbl');
+    const ttPrivacy = $('tt-privacy-lbl');
+    const ttFeatures = $('tt-features-lbl');
+    const ttDisconnect = $('tt-disconnect-btn');
+
+    if (ttBadge) {
+      if (tt.connected) {
+        ttBadge.textContent = 'Connected';
+        ttBadge.className = 'badge badge-green';
+        if (ttAccount) ttAccount.textContent = tt.display_name || tt.username || 'Connected';
+        if (ttDisconnect) ttDisconnect.style.display = 'inline-flex';
+      } else {
+        ttBadge.textContent = 'Not Connected';
+        ttBadge.className = 'badge';
+        if (ttAccount) ttAccount.textContent = 'Not Connected';
+        if (ttDisconnect) ttDisconnect.style.display = 'none';
+      }
+      if (ttPrivacy) ttPrivacy.textContent = (tt.default_privacy || 'public').replace(/_/g, ' ');
+      if (ttFeatures) ttFeatures.textContent = (tt.allow_duet && tt.allow_stitch) ? 'Duet & Stitch On' : 'Custom';
+    }
+
+    // Instagram
+    const ig = data.instagram || {};
+    const igBadge = $('ig-status-badge');
+    const igAccount = $('ig-account-lbl');
+    const igFeed = $('ig-feed-lbl');
+    const igDisconnect = $('ig-disconnect-btn');
+
+    if (igBadge) {
+      if (ig.connected) {
+        igBadge.textContent = 'Connected';
+        igBadge.className = 'badge badge-green';
+        if (igAccount) igAccount.textContent = ig.account_name || 'Connected';
+        if (igDisconnect) igDisconnect.style.display = 'inline-flex';
+      } else {
+        igBadge.textContent = 'Not Connected';
+        igBadge.className = 'badge';
+        if (igAccount) igAccount.textContent = 'Not Connected';
+        if (igDisconnect) igDisconnect.style.display = 'none';
+      }
+      if (igFeed) igFeed.textContent = ig.share_to_feed ? 'Yes (Feed + Reels)' : 'Reels Only';
+    }
+
+    // Presets
+    const defs = data.defaults || {};
+    if ($('social-default-signature') && defs.caption_signature) {
+      $('social-default-signature').value = defs.caption_signature;
+    }
+    if ($('social-default-tags') && defs.default_tags) {
+      $('social-default-tags').value = defs.default_tags.map(t => '#' + t.replace(/^#/, '')).join(' ');
+    }
+    return data;
+  } catch (e) {
+    console.warn('Failed loading social accounts:', e);
+  }
+}
+
+function openSocialConfigModal(platform) {
+  activeSocialPlatform = platform;
+  const modal = $('social-account-modal');
+  const title = $('social-modal-title');
+  const alertBox = $('social-modal-alert');
+  if (alertBox) alertBox.hidden = true;
+
+  $('fields-youtube').hidden = (platform !== 'youtube');
+  $('fields-tiktok').hidden = (platform !== 'tiktok');
+  $('fields-instagram').hidden = (platform !== 'instagram');
+
+  if (platform === 'youtube') {
+    title.textContent = 'Configure YouTube Shorts (Google Data API v3)';
+  } else if (platform === 'tiktok') {
+    title.textContent = 'Configure TikTok (Content Posting API)';
+  } else if (platform === 'instagram') {
+    title.textContent = 'Configure Instagram Reels (Meta Graph API)';
+  }
+
+  if (modal) modal.hidden = false;
+}
+
+function closeSocialConfigModal() {
+  const modal = $('social-account-modal');
+  if (modal) modal.hidden = true;
+}
+
+function openDirectPublishModal(clip) {
+  const modal = $('direct-publish-modal');
+  const clipIdInp = $('publish-clip-id');
+  const clipFileInp = $('publish-clip-file');
+  const nameLbl = $('publish-clip-name');
+  const metaLbl = $('publish-clip-meta');
+  const titleInp = $('pub-clip-title');
+  const descInp = $('pub-clip-desc');
+  const tagsInp = $('pub-clip-tags');
+  const statusBox = $('pub-status-box');
+
+  if (statusBox) statusBox.hidden = true;
+
+  const clipId = clip.id || '';
+  const clipFile = clip.file || (clipId ? `${clipId}.mp4` : '');
+  if (clipIdInp) clipIdInp.value = clipId;
+  if (clipFileInp) clipFileInp.value = clipFile;
+
+  const title = clip.title || 'Clipiest Highlight';
+  if (nameLbl) nameLbl.textContent = clipFile || 'Selected Clip';
+  if (metaLbl) {
+    const dur = clip.end && clip.start ? `${Math.round(clip.end - clip.start)}s` : '';
+    metaLbl.textContent = [clip.layout || '9:16 Vertical', dur].filter(Boolean).join(' • ');
+  }
+
+  if (titleInp) titleInp.value = title;
+  const signature = $('social-default-signature')?.value || '🔥 Clipped with @Clipiest';
+  if (descInp) descInp.value = `${title}\n\n${signature}`;
+
+  const defaultTags = $('social-default-tags')?.value || '#shorts #viral #fyp #reels';
+  if (tagsInp) tagsInp.value = defaultTags;
+
+  if (modal) modal.hidden = false;
+}
+
+function closeDirectPublishModal() {
+  const modal = $('direct-publish-modal');
+  if (modal) modal.hidden = true;
+}
+
+function setupSocialManager() {
+  if ($('social-refresh-btn')) $('social-refresh-btn').onclick = loadSocialAccounts;
+
+  if ($('yt-configure-btn')) $('yt-configure-btn').onclick = () => openSocialConfigModal('youtube');
+  if ($('tt-configure-btn')) $('tt-configure-btn').onclick = () => openSocialConfigModal('tiktok');
+  if ($('ig-configure-btn')) $('ig-configure-btn').onclick = () => openSocialConfigModal('instagram');
+
+  if ($('yt-test-btn')) $('yt-test-btn').onclick = () => testSocialConnection('youtube');
+  if ($('tt-test-btn')) $('tt-test-btn').onclick = () => testSocialConnection('tiktok');
+  if ($('ig-test-btn')) $('ig-test-btn').onclick = () => testSocialConnection('instagram');
+
+  if ($('yt-disconnect-btn')) $('yt-disconnect-btn').onclick = () => disconnectSocialAccount('youtube');
+  if ($('tt-disconnect-btn')) $('tt-disconnect-btn').onclick = () => disconnectSocialAccount('tiktok');
+  if ($('ig-disconnect-btn')) $('ig-disconnect-btn').onclick = () => disconnectSocialAccount('instagram');
+
+  if ($('social-modal-close-btn')) $('social-modal-close-btn').onclick = closeSocialConfigModal;
+  if ($('social-modal-cancel')) $('social-modal-cancel').onclick = closeSocialConfigModal;
+  if ($('social-modal-save')) $('social-modal-save').onclick = saveSocialAccountModal;
+
+  if ($('save-social-defaults-btn')) {
+    $('save-social-defaults-btn').onclick = async () => {
+      const sig = $('social-default-signature')?.value.trim() || '';
+      const tags = ($('social-default-tags')?.value.trim() || '')
+        .split(/\s+/)
+        .map(t => t.replace(/^#/, ''))
+        .filter(Boolean);
+      try {
+        await api('/api/social/accounts', {
+          method: 'POST',
+          body: JSON.stringify({
+            platform: 'defaults',
+            credentials: { caption_signature: sig, default_tags: tags }
+          })
+        });
+        alert('Social publishing presets saved successfully!');
+      } catch (e) {
+        alert('Failed saving presets: ' + e.message);
+      }
+    };
+  }
+
+  if ($('publish-modal-close-btn')) $('publish-modal-close-btn').onclick = closeDirectPublishModal;
+  if ($('publish-cancel-btn')) $('publish-cancel-btn').onclick = closeDirectPublishModal;
+  if ($('publish-submit-btn')) $('publish-submit-btn').onclick = submitDirectPublish;
+}
+
+async function testSocialConnection(platform) {
+  try {
+    const res = await api('/api/social/test', {
+      method: 'POST',
+      body: JSON.stringify({ platform })
+    });
+    alert(res.message || (res.success ? 'Connection verified!' : 'Connection failed.'));
+    await loadSocialAccounts();
+  } catch (e) {
+    alert('Test failed: ' + e.message);
+  }
+}
+
+async function disconnectSocialAccount(platform) {
+  if (!confirm(`Are you sure you want to disconnect ${platform.toUpperCase()}?`)) return;
+  try {
+    await api('/api/social/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({ platform })
+    });
+    await loadSocialAccounts();
+  } catch (e) {
+    alert('Disconnect failed: ' + e.message);
+  }
+}
+
+async function saveSocialAccountModal() {
+  const alertBox = $('social-modal-alert');
+  let creds = {};
+
+  if (activeSocialPlatform === 'youtube') {
+    creds = {
+      access_token: $('yt-inp-access-token')?.value.trim() || '',
+      client_id: $('yt-inp-client-id')?.value.trim() || '',
+      client_secret: $('yt-inp-client-secret')?.value.trim() || '',
+      default_privacy: $('yt-inp-privacy')?.value || 'public',
+      auto_shorts_tag: $('yt-inp-auto-shorts')?.checked ?? true,
+    };
+  } else if (activeSocialPlatform === 'tiktok') {
+    creds = {
+      access_token: $('tt-inp-access-token')?.value.trim() || '',
+      default_privacy: $('tt-inp-privacy')?.value || 'PUBLIC_TO_EVERYONE',
+      allow_duet: $('tt-inp-duet')?.checked ?? true,
+      allow_stitch: $('tt-inp-stitch')?.checked ?? true,
+      allow_comments: $('tt-inp-comments')?.checked ?? true,
+    };
+  } else if (activeSocialPlatform === 'instagram') {
+    creds = {
+      instagram_account_id: $('ig-inp-account-id')?.value.trim() || '',
+      access_token: $('ig-inp-access-token')?.value.trim() || '',
+      share_to_feed: $('ig-inp-share-feed')?.checked ?? true,
+    };
+  }
+
+  try {
+    await api('/api/social/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ platform: activeSocialPlatform, credentials: creds })
+    });
+    closeSocialConfigModal();
+    await loadSocialAccounts();
+  } catch (e) {
+    if (alertBox) {
+      alertBox.textContent = e.message;
+      alertBox.className = 'cfg-status-box error';
+      alertBox.hidden = false;
+    } else {
+      alert('Save failed: ' + e.message);
+    }
+  }
+}
+
+async function submitDirectPublish() {
+  const btn = $('publish-submit-btn');
+  const statusBox = $('pub-status-box');
+  const clipId = $('publish-clip-id')?.value || '';
+  const file = $('publish-clip-file')?.value || '';
+  const title = $('pub-clip-title')?.value.trim() || 'Clipiest Highlight';
+  const description = $('pub-clip-desc')?.value.trim() || '';
+  const tags = ($('pub-clip-tags')?.value.trim() || '')
+    .split(/\s+/)
+    .map(t => t.replace(/^#/, ''))
+    .filter(Boolean);
+  const privacy = $('pub-clip-privacy')?.value || 'public';
+
+  const platforms = [];
+  if ($('pub-platform-yt')?.checked) platforms.push('youtube');
+  if ($('pub-platform-tt')?.checked) platforms.push('tiktok');
+  if ($('pub-platform-ig')?.checked) platforms.push('instagram');
+
+  if (!platforms.length) {
+    alert('Please select at least one target platform (YouTube Shorts, TikTok, or Instagram Reels).');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Publishing to Socials... ⏳';
+  if (statusBox) {
+    statusBox.textContent = `Uploading to ${platforms.join(', ')}... Please wait.`;
+    statusBox.className = 'cfg-status-box';
+    statusBox.hidden = false;
+  }
+
+  try {
+    const res = await api('/api/social/publish', {
+      method: 'POST',
+      body: JSON.stringify({
+        clip_id: clipId,
+        file: file,
+        platforms: platforms,
+        title: title,
+        description: description,
+        tags: tags,
+        privacy: privacy,
+        creator_id: appState.currentCreatorId || null
+      })
+    });
+
+    const result = res.result || {};
+    const pResults = result.platforms || {};
+    let msgLines = ['🎉 Publish Results:'];
+    for (const [pName, pRes] of Object.entries(pResults)) {
+      if (pRes.success) {
+        msgLines.push(`✅ ${pRes.platform || pName}: ${pRes.message || 'Published!'}`);
+        if (pRes.url) msgLines.push(`   👉 URL: ${pRes.url}`);
+      } else {
+        msgLines.push(`❌ ${pName}: ${pRes.error || 'Failed'}`);
+      }
+    }
+
+    if (statusBox) {
+      statusBox.innerHTML = msgLines.map(l => escapeHtml(l)).join('<br>');
+      statusBox.className = 'cfg-status-box success';
+      statusBox.hidden = false;
+    }
+    btn.textContent = 'Published! 🚀';
+  } catch (e) {
+    if (statusBox) {
+      statusBox.textContent = 'Publishing error: ' + e.message;
+      statusBox.className = 'cfg-status-box error';
+      statusBox.hidden = false;
+    }
+    btn.textContent = 'Publish Now 🚀';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // -------------------------------------------------------------
@@ -2461,12 +2850,14 @@ async function loadLibrary() {
             <a href="${clip.file}" download="clipiest-${clip.id}.mp4" class="btn-secondary btn-sm">↓ MP4</a>
             <a href="${clip.srt}" class="btn-secondary btn-sm">↓ SRT</a>
             <button class="btn-secondary btn-sm reedit-btn">⚡ Edit</button>
+            <button class="btn-primary btn-sm pub-social-btn" title="Publish directly to YouTube, TikTok, Instagram">🚀 Publish</button>
             <button class="btn-danger btn-sm del-btn">🗑</button>
           </div>
         </div>
       `;
 
       card.querySelector('.reedit-btn').onclick = () => openSavedClip(clip.id);
+      card.querySelector('.pub-social-btn').onclick = () => openDirectPublishModal(clip);
       card.querySelector('.del-btn').onclick = async () => {
         if (!confirm('Permanently delete this clip?')) return;
         await api(`/api/library/${clip.id}`, { method: 'DELETE' });

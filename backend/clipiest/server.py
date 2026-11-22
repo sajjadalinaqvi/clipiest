@@ -1034,6 +1034,7 @@ PROTECTED_STORAGE_FILENAMES = {
     "creator.json",
     "profile.json",
     "ai.json",
+    "social_accounts.json",
     "CACHEDIR.TAG",
 }
 
@@ -1371,6 +1372,93 @@ def live_session_status(session_id: Optional[str] = None):
     if not mgr:
         raise HTTPException(404, "Session not found.")
     return mgr.get_status()
+
+# -------------------------------------------------------------
+# Social Media & Direct Multi-Platform Publishing
+# -------------------------------------------------------------
+@app.get("/api/social/accounts")
+def api_get_social_accounts():
+    """Returns safe masked connection details and defaults for YouTube, TikTok, and Instagram."""
+    from . import social
+    return social.get_masked_accounts()
+
+@app.post("/api/social/accounts")
+def api_save_social_account(body: dict):
+    """Saves API credentials / tokens for a social platform."""
+    from . import social
+    platform = str(body.get("platform", "")).lower().strip()
+    credentials = body.get("credentials") or {}
+    try:
+        updated = social.update_account(platform, credentials)
+        return {"success": True, "accounts": updated}
+    except Exception as e:
+        raise HTTPException(400, f"Failed updating {platform} settings: {e}")
+
+@app.post("/api/social/disconnect")
+def api_disconnect_social_account(body: dict):
+    """Disconnects and clears credentials for a platform."""
+    from . import social
+    platform = str(body.get("platform", "")).lower().strip()
+    try:
+        updated = social.disconnect_account(platform)
+        return {"success": True, "accounts": updated}
+    except Exception as e:
+        raise HTTPException(400, f"Failed disconnecting {platform}: {e}")
+
+@app.post("/api/social/test")
+def api_test_social_account(body: dict):
+    """Verifies live connection and profile information for a platform."""
+    from . import social
+    platform = str(body.get("platform", "")).lower().strip()
+    return social.test_account_connection(platform)
+
+@app.post("/api/social/publish")
+def api_publish_clip(body: dict):
+    """Publishes a specified clip directly to YouTube Shorts, TikTok, and/or Instagram Reels."""
+    from . import social
+    clip_id = str(body.get("clip_id", "")).strip()
+    file_name = str(body.get("file", "")).strip()
+    platforms = body.get("platforms") or []
+    if not platforms:
+        raise HTTPException(400, "Select at least one social media platform to publish.")
+    
+    target_name = file_name or (f"{clip_id}.mp4" if clip_id else "")
+    if not target_name:
+        raise HTTPException(400, "Provide a clip_id or file name to publish.")
+    
+    clip_path = find_clip_file(target_name)
+    if not clip_path or not clip_path.exists():
+        raise HTTPException(404, f"Clip file '{target_name}' not found for publishing.")
+    
+    title = str(body.get("title", "")).strip() or "Clipiest Highlight"
+    description = str(body.get("description", "")).strip()
+    tags = body.get("tags") or []
+    privacy = str(body.get("privacy", "public")).strip()
+
+    try:
+        publish_res = social.publish_clip(
+            clip_path=clip_path,
+            platforms=platforms,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy=privacy
+        )
+        
+        creator_id = body.get("creator_id") or body.get("creator")
+        if creator_id:
+            try:
+                creators.log_creator_event(
+                    creator_id,
+                    f"Published clip '{clip_path.name}' to {', '.join(platforms)}",
+                    action="publish"
+                )
+            except Exception:
+                pass
+                
+        return {"success": True, "result": publish_res}
+    except Exception as e:
+        raise HTTPException(500, f"Direct publishing failed: {e}")
 
 # -------------------------------------------------------------
 # Frontend Static Files Mount & SPA Routing
