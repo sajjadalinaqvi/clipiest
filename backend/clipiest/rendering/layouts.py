@@ -79,8 +79,11 @@ def geometry(name: str, top: float = 0.32) -> dict:
         ]
     }
 
-def render_graph(name: str, rects: list, top: float = 0.32) -> str:
-    """Builds the FFmpeg -filter_complex string for this layout given crop rects: [(cam_x,y,w,h), (game_x,y,w,h)]."""
+def render_graph(name: str, rects: list, top: float = 0.32, is_whole_game: bool = None) -> str:
+    """Builds the FFmpeg -filter_complex string for this layout given crop rects: [(cam_x,y,w,h), (game_x,y,w,h)].
+    If the gameplay box represents the whole screen (is_whole_game=True), it fits the entire 16:9
+    gameplay into the 9:16 target section without cropping off the sides.
+    """
     spec = geometry(name, top)
     if spec["mode"] == "blur":
         return (
@@ -99,6 +102,7 @@ def render_graph(name: str, rects: list, top: float = 0.32) -> str:
     for i, layer in enumerate(layers):
         source = f"[s{i}]" if len(layers) > 1 else "[0:v]"
         crop = ""
+        is_game_source = layer["source"] in ("game", "full")
         if layer["source"] != "full":
             x, y, w, h = rects[0 if layer["source"] == "cam" else 1]
             w = max(2, int(w) // 2 * 2)
@@ -106,12 +110,27 @@ def render_graph(name: str, rects: list, top: float = 0.32) -> str:
             x = max(0, int(x))
             y = max(0, int(y))
             crop = f"crop={w}:{h}:{x}:{y},"
+        else:
+            w, h = 1920, 1080
+
+        # Auto-detect if gameplay box is whole screen or wide 16:9
+        should_fit_whole = is_whole_game
+        if should_fit_whole is None and is_game_source:
+            should_fit_whole = bool(w >= 900 and h >= 500 and (w / max(1, h)) >= 1.5)
+
         lw, lh = layer["w"], layer["h"]
         mask = ""
         if layer.get("circle"):
             # Smooth circular alpha mask equation
             mask = ",format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow(X-W/2,2)+pow(Y-H/2,2),pow(min(W,H)/2,2)),255,0)'"
-        parts.append(f"{source}{crop}scale={lw}:{lh}:force_original_aspect_ratio=increase,crop={lw}:{lh},setsar=1{mask}[p{i}]")
+
+        if is_game_source and should_fit_whole:
+            # Fit the entire 16:9 screen in the 9:16 target layer (preserves minimap, HUD, and killfeed)
+            scale_filter = f"scale={lw}:{lh}:force_original_aspect_ratio=decrease,pad={lw}:{lh}:(ow-iw)/2:(oh-ih)/2:black,setsar=1{mask}"
+        else:
+            scale_filter = f"scale={lw}:{lh}:force_original_aspect_ratio=increase,crop={lw}:{lh},setsar=1{mask}"
+
+        parts.append(f"{source}{crop}{scale_filter}[p{i}]")
     
     first = layers[0]
     parts.append(f"[p0]pad=1080:1920:{first['x']}:{first['y']}:black[b0]")

@@ -81,7 +81,8 @@ def render_clip(
 
         # Build layout filter
         rects = [cam_rect, game_rect]
-        graph = render_graph(layout, rects, top)
+        is_whole_game = bool(game_rect[2] >= 0.88 * vw and game_rect[3] >= 0.88 * vh)
+        graph = render_graph(layout, rects, top, is_whole_game=is_whole_game)
 
         has_subtitles = bool((words and len(words) > 0) or hook.strip())
         clip_dur = max(0.5, float(end - start))

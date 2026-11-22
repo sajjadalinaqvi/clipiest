@@ -38,12 +38,18 @@ Clipiest is an all-rounder viral clipping platform across gaming streams, podcas
 RULES = """
 Requirements:
 - Recommend up to {n} distinct viral clips focusing primarily on the creator's best moments.
+- SCORE REQUIREMENT: All clips MUST have an accurate viral retention score of 85 or above (85-99). Scores above 85% are strictly preferred. Do NOT recommend weak moments below 85.
+- ACCURATE VIRAL SCORING:
+  * 93-98: Explosive high-energy reactions, unhinged laughter, insane panic screams, unbelievable clutch/fails.
+  * 88-92: High-tension dramatic moments, spicy banter, hilarious chat roasts, wild confessions.
+  * 85-87: Solid comedic or high-interest highlights with clear punchline.
+- CRUCIAL TIMELINE COVERAGE (MIDDLE TIMESTAMPS): You MUST explore and distribute clips across the ENTIRE video (Start, MIDDLE, and Climax/End). Do NOT just grab the start or end of the video. Actively find and include the best moments from the middle of the timeline.
 - Each clip must be between {min_len}s and {max_len}s long. Use exact seconds from the transcript brackets [seconds].
 - "start": Timestamp of the setup line (start of speech, not dead air).
 - "end": Timestamp right after the punchline or reaction (end of sentence).
 - "hook": 3-5 uppercase words focused on the creator (e.g. "HE LOST HIS MIND", "BRO THOUGHT HE WAS SAFE", "HIS REACTION IS UNREAL", "HE ACTUALLY SAID THIS", "BRO WAS FIGHTING FOR HIS LIFE", "THE EXACT SECOND HE REGRETTED IT").
 - "title": Punchy, viral title under 70 characters emphasizing the creator's action/reaction.
-- "score": 80-99 viral retention rating based on comedy, hype, or shock factor.
+- "score": Accurate viral retention rating between 85 and 99.
 - "category": one of funny, fail, clutch, rage, shock, story, hype.
 - "reason": Why the creator's moment will make strangers watch to the very end.
 
@@ -78,10 +84,11 @@ Candidate Transcript:
 \"\"\"{transcript}\"\"\"
 
 Analyze this moment for viral hooks, shock, comedy, fails, clutch gameplay, or narrative payoff.
+Rate virality accurately between 85 and 99 (all clips must score 85 or above; scores above 85% are strictly preferred).
 Reply ONLY with valid JSON with this exact structure:
 {{
-  "score": 1-100,
-  "title": "Punchy title under 60 chars in English/Hinglish",
+  "score": 85-99,
+  "title": "Punchy title under 60 chars in English",
   "hook": "ALL CAPS hook 2-5 words shown on screen first 3s",
   "description": "Engaging 1-2 sentence description",
   "category": "funny | clutch | fail | shock | story | hype | other",
@@ -136,17 +143,43 @@ def format_transcript_lines(lines: list, limit_chars: int = 12000) -> str:
             break
     return "\n".join(out)
 
-def extract_high_energy_transcript(chunk: list, limit_chars: int = 5000) -> str:
+def parse_timestamp(v, default: float = -1.0) -> float:
+    """Parses timestamps from numbers, float strings, or timecode strings ('mm:ss', 'hh:mm:ss')."""
+    if v is None:
+        return default
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().strip('"').strip("'")
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            if len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+            elif len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        except Exception:
+            pass
+    try:
+        return float(s)
+    except Exception:
+        return default
+
+def extract_high_energy_transcript(chunk: list, limit_chars: int = 6500) -> str:
     """Intelligently clusters transcript lines around loudness peaks, reaction words,
-    and questions/exclamations to give the LLM full, coherent viral scenes (setup -> climax -> reaction)."""
+    and questions/exclamations across the ENTIRE chunk (Start, MIDDLE, and End)
+    to give the LLM full, coherent viral scenes without truncating middle/late timestamps."""
     if not chunk:
         return ""
-    if len(chunk) <= 45:
+    if len(chunk) <= 50:
         return format_transcript_lines(chunk, limit_chars=limit_chars)
     
     # 1. Identify climaxes and explosive moments
     climax_indices = []
-    hot_words = {"kill", "dead", "omg", "god", "bro", "clutch", "run", "no way", "what", "how", "wait", "look", "insane", "hacker", "aimbot", "shot", "fail", "win", "lost", "die"}
+    hot_words = {
+        "kill", "dead", "omg", "god", "bro", "clutch", "run", "no way", "what",
+        "how", "wait", "look", "insane", "hacker", "aimbot", "shot", "fail", "win",
+        "lost", "die", "screaming", "laughing", "unreal", "no", "yes", "stop", "dude"
+    }
     for idx, l in enumerate(chunk):
         txt_l = l["text"].lower()
         is_hot = l.get("loud") or "!" in txt_l or "?" in txt_l or any(hw in txt_l for hw in hot_words)
@@ -154,12 +187,33 @@ def extract_high_energy_transcript(chunk: list, limit_chars: int = 5000) -> str:
             climax_indices.append(idx)
             
     if not climax_indices:
-        return format_transcript_lines(chunk[:50], limit_chars=limit_chars)
+        step = max(1, len(chunk) // 40)
+        return format_transcript_lines(chunk[::step], limit_chars=limit_chars)
         
-    # 2. Build 30-50s context bubbles around the climaxes (setup 4 lines before, reaction 6 lines after)
-    selected_indices = set()
+    # 2. Stratify climaxes across 3 phases (Start: 0-33%, Middle: 33-66%, Late: 66-100%)
+    n_lines = len(chunk)
+    c_early = [i for i in climax_indices if i < 0.35 * n_lines]
+    c_mid = [i for i in climax_indices if 0.30 * n_lines <= i <= 0.70 * n_lines]
+    c_late = [i for i in climax_indices if i > 0.65 * n_lines]
+
+    chosen_climaxes = set()
+    # Ensure representation from each phase, especially the middle
+    for pool in (c_early, c_mid, c_late):
+        if pool:
+            k = min(4, len(pool))
+            indices = np.linspace(0, len(pool) - 1, k, dtype=int)
+            for idx in indices:
+                chosen_climaxes.add(pool[idx])
+
     for ci in climax_indices:
-        for offset in range(-4, 7):
+        if len(chosen_climaxes) >= 14:
+            break
+        chosen_climaxes.add(ci)
+
+    # 3. Build context bubbles around the chosen climaxes (-3 to +5 lines)
+    selected_indices = set()
+    for ci in chosen_climaxes:
+        for offset in range(-3, 6):
             target = ci + offset
             if 0 <= target < len(chunk):
                 selected_indices.add(target)
@@ -207,50 +261,65 @@ def snap_clip_to_sentences(clip: dict, words: list, min_len: float, max_len: flo
     words[:] = [w for w in words if w["start"] < dur]
 
 def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float, max_len: float, duration: float, title: str = "") -> list:
-    """Heuristic fallback: picks loudest stretches with verified speech when AI is unavailable."""
-    z = loud_zscore(db) if len(db) else np.zeros(int(duration))
-    order = np.argsort(-z)
-    picks = []
+    """Heuristic fallback: picks loudest stretches with verified speech across Start, Middle, and End.
+    Guarantees accurate scores >= 85 and balanced timeline distribution."""
     clip_len = min(duration, max_len)
     base_t = (title or "Viral Highlight").split("(")[0].strip()[:35]
-    hooks = ["WAIT FOR THIS", "YOU WON'T BELIEVE THIS", "WATCH TILL THE END", "INSTANT REGRET", "HE DID NOT SEE THIS COMING", "ABSOLUTELY UNREAL"]
+    hooks = [
+        "WAIT FOR THIS", "HE COULD NOT BELIEVE IT", "WATCH TILL THE END",
+        "INSTANT REGRET", "HE DID NOT SEE THIS COMING", "ABSOLUTELY UNREAL",
+        "BRO LOST HIS MIND", "PEAK REACTION", "MOST CLUTCH PLAY"
+    ]
     cats = ["hype", "shock", "clutch", "funny", "action", "rage"]
     
-    for sec in order:
-        s = max(0.0, float(sec) - clip_len * 0.4)
+    n_sec = max(1, int(duration))
+    z = loud_zscore(db) if len(db) >= 5 and db.std() > 1e-4 else np.zeros(n_sec)
+    
+    picks = []
+    # Stratify across count slices so Start, Middle, and End are all represented
+    step = duration / max(1, count)
+    for idx in range(count):
+        t_start = idx * step
+        t_end = min(duration, (idx + 1) * step)
+        
+        # Find peak within this slice
+        sub_lo = int(max(0, t_start))
+        sub_hi = int(min(n_sec, t_end))
+        if sub_hi > sub_lo and z[sub_lo:sub_hi].max() > 0:
+            rel_peak = int(np.argmax(z[sub_lo:sub_hi]))
+            sec = float(sub_lo + rel_peak)
+        else:
+            sec = (t_start + t_end) / 2.0
+            
+        s = max(0.0, min(duration - clip_len, sec - clip_len * 0.4))
         e = min(duration, s + clip_len)
+        
+        # If words exist, align with words in this slice if possible
+        if words:
+            matching = [w for w in words if s <= w["start"] <= e]
+            if not matching:
+                slice_words = [w for w in words if t_start <= w["start"] <= t_end]
+                if slice_words:
+                    s = max(0.0, min(duration - clip_len, slice_words[0]["start"] - 0.5))
+                    e = min(duration, s + clip_len)
+                    
+        # Check for overlap with existing picks
         if any(min(e, p["end"]) - max(s, p["start"]) > 0 for p in picks):
-            continue
-        if words and not any(s <= w["start"] <= e for w in words):
-            continue
-        idx = len(picks)
+            s = max(0.0, min(duration - clip_len, t_start + 5.0))
+            e = min(duration, s + clip_len)
+
+        score_val = max(85, min(98, 96 - idx * 2))
         picks.append({
             "start": round(s, 2),
             "end": round(e, 2),
-            "score": max(70, min(92, 85 - idx * 3)),
+            "score": score_val,
             "category": cats[idx % len(cats)],
             "hook": hooks[idx % len(hooks)],
-            "title": f"{base_t} - Peak #{idx + 1}",
-            "description": f"High excitement peak detected at {int(s // 60)}m {int(s % 60)}s in audio stream.",
+            "title": f"{base_t} - Highlight #{idx + 1}",
+            "description": f"High excitement highlight at {int(s // 60)}m {int(s % 60)}s in stream.",
             "hashtags": ["viral", "gaming", "stream", "highlight"],
             "highlight_words": [],
-            "reason": "Highest audio amplitude and action energy."
-        })
-        if len(picks) >= count:
-            break
-            
-    if not picks:
-        picks.append({
-            "start": 0.0,
-            "end": round(min(duration, clip_len), 2),
-            "score": 75,
-            "category": "action",
-            "hook": "WATCH THIS",
-            "title": f"{base_t} - Viral Moment",
-            "description": "Featured stream action slice.",
-            "hashtags": ["gaming", "shorts"],
-            "highlight_words": [],
-            "reason": "Top action segment"
+            "reason": "Timeline highlight segment"
         })
     return picks
 
@@ -294,8 +363,11 @@ CONTENT-CREATOR-FIRST VIRAL PRINCIPLE:
 - If a content creator/host is present, focus on their funniest reactions, screaming in panic, unhinged laughter, chat roasts, confessions, and storytelling. The game or setting is just the backdrop.
 - Only if there is NO content creator (e.g. an official game trailer or tech launch), focus on the product reveals and climactic action.
 
-Identify {max_clips} distinct viral moments distributed across the video:
-- Space clips across different phases (e.g. early curiosity hook at 10-20%, midpoint tension at 40-55%, peak climax at 70-85%, shocking finale at 90-95%).
+TIMELINE & SCORE REQUIREMENTS:
+- Identify {max_clips} distinct viral moments distributed across the ENTIRE video (Start, MIDDLE, and Climax/End).
+- MANDATORY: Include middle timestamps (between {int(duration * 0.35)}s and {int(duration * 0.70)}s), not just the beginning and end.
+- All clips MUST have an accurate viral score of 85 or higher (85-99, above 85% is strictly preferred).
+- Rate virality accurately: peak reactions/screams 92-98, strong comedic/clutch moments 85-91.
 - Each clip MUST be {int(min_len)} to {int(max_len)} seconds long (e.g. start: 120.0, end: 165.0).
 - Provide high-curiosity viral hooks (ALL CAPS, 3-5 words) centered on the creator (e.g. "HE BROKE HIS SETUP", "BRO WAS NOT READY", "HIS REACTION IS UNREAL", "HE ACTUALLY LOST IT").
 - Assign realistic start and end timestamps within 0.0 to {duration:.1f} seconds.
@@ -322,13 +394,17 @@ Format strictly as a JSON array of objects:
                 for c in raw_res:
                     if not isinstance(c, dict):
                         continue
-                    st = max(0.0, min(duration - 5, float(c.get("start", 0))))
-                    en = min(duration, max(st + 10, float(c.get("end", st + 45))))
+                    st = parse_timestamp(c.get("start"), default=0.0)
+                    en = parse_timestamp(c.get("end"), default=st + 45.0)
+                    st = max(0.0, min(duration - 5, st))
+                    en = min(duration, max(st + 10, en))
+                    raw_score = int(parse_timestamp(c.get("score"), default=88))
+                    score_val = max(85, min(99, raw_score if raw_score >= 80 else raw_score + 10))
                     cat = str(c.get("category", "action")).lower()
                     narrative_moments.append({
                         "start": round(st, 2),
                         "end": round(en, 2),
-                        "score": max(50, min(100, int(c.get("score", 85)))),
+                        "score": score_val,
                         "category": cat if cat in CATEGORIES else "action",
                         "hook": to_roman(str(c.get("hook", "WAIT FOR IT"))[:50]).upper(),
                         "title": to_roman(str(c.get("title", title[:40] or "Viral Moment"))[:70]),
@@ -379,10 +455,33 @@ Format strictly as a JSON array of objects:
             "chunk": lines
         })
 
-    # Sort candidates by excitement; query at most the top 2 windows (or 1 if video is short/count is low)
+    # Timeline window selection: Ensure Start, Middle, and Late coverage
     window_candidates.sort(key=lambda x: -x["score"])
-    target_window_count = 1 if max_clips <= 4 and len(window_candidates) > 0 else min(2, len(window_candidates))
-    selected_windows = sorted(window_candidates[:target_window_count], key=lambda x: x["a"])
+    chosen_wins = []
+    if window_candidates:
+        # 1. Best overall window
+        chosen_wins.append(window_candidates[0])
+
+        # 2. Middle window (if duration > 180s and middle window exists)
+        if duration > 180:
+            mid_candidates = [
+                w for w in window_candidates
+                if (0.25 * duration <= w["a"] <= 0.75 * duration) or (w["a"] <= 0.50 * duration and w["b"] >= 0.50 * duration)
+            ]
+            if mid_candidates:
+                mid_best = sorted(mid_candidates, key=lambda x: -x["score"])[0]
+                if mid_best not in chosen_wins:
+                    chosen_wins.append(mid_best)
+
+        # 3. Supplemental window if max_clips > 3
+        if max_clips > 3:
+            for w in window_candidates[1:]:
+                if w not in chosen_wins:
+                    chosen_wins.append(w)
+                    if len(chosen_wins) >= 3:
+                        break
+
+    selected_windows = sorted(chosen_wins, key=lambda x: x["a"])
 
     game_rule = f"This stream context is {game_name}. Focus primarily on the content creator's reactions, fails, roasts, or clutches." if game_name else ""
     found_moments = []
@@ -390,8 +489,8 @@ Format strictly as a JSON array of objects:
 
     for win in selected_windows:
         a, b, chunk = win["a"], win["b"], win["chunk"]
-        # Intelligently cluster around climaxes, screams, and reaction lines (up to 2,500 characters for fast LLM inference)
-        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=2500)
+        # Intelligently cluster around climaxes, screams, and reaction lines across entire chunk
+        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=6500)
         prompt = (
             HEAD.format(
                 title=_clean_text(title, 80) or "Video",
@@ -405,15 +504,15 @@ Format strictly as a JSON array of objects:
         
         try:
             log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt, max_tokens=600, temperature=0.65)
+            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.65)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
                 for c in raw_res:
                     if not isinstance(c, dict):
                         continue
-                    st = float(c.get("start", -1))
-                    en = float(c.get("end", -1))
+                    st = parse_timestamp(c.get("start"), default=-1.0)
+                    en = parse_timestamp(c.get("end"), default=-1.0)
                     if st < 0 or en <= st:
                         continue
                     # Ensure times stay within allowed range
@@ -426,10 +525,14 @@ Format strictly as a JSON array of objects:
                     en = min(duration, max(st + 5, en))
                     
                     cat = str(c.get("category", "other")).lower()
+                    raw_score = int(parse_timestamp(c.get("score"), default=88))
+                    # Enforce score >= 85 requirement
+                    score_val = max(85, min(99, raw_score if raw_score >= 80 else raw_score + 10))
+
                     found_moments.append({
                         "start": round(st, 2),
                         "end": round(en, 2),
-                        "score": max(10, min(100, int(c.get("score", 70)))),
+                        "score": score_val,
                         "category": cat if cat in CATEGORIES else "other",
                         "hook": to_roman(str(c.get("hook", "WAIT FOR IT"))[:50]).upper(),
                         "title": to_roman(str(c.get("title", title[:40] or "Epic Moment"))[:70]),
@@ -465,6 +568,20 @@ Format strictly as a JSON array of objects:
         if len(chosen) >= max_clips:
             break
 
+    # Middle timestamp guarantee:
+    # If duration > 180s and none of chosen clips is in middle 50% [0.25*dur, 0.75*dur], ensure a middle highlight is included
+    if duration > 180 and len(chosen) > 1:
+        has_mid = any(0.25 * duration <= m["start"] <= 0.75 * duration for m in chosen)
+        if not has_mid:
+            mid_cand = next((m for m in found_moments if 0.25 * duration <= m["start"] <= 0.75 * duration and not _overlaps(m["start"], m["end"], chosen[:-1])), None)
+            if mid_cand:
+                chosen[-1] = mid_cand
+            else:
+                mid_picks = fallback_by_loudness(db, words, 2, min_len, max_len, duration, title=title)
+                mid_pick = next((p for p in mid_picks if 0.25 * duration <= p["start"] <= 0.75 * duration and not _overlaps(p["start"], p["end"], chosen[:-1])), None)
+                if mid_pick:
+                    chosen[-1] = mid_pick
+
     # If AI produced fewer clips than requested, backfill and enrich with LLM
     if len(chosen) < max_clips:
         extra_needed = max_clips - len(chosen)
@@ -480,7 +597,7 @@ Video Title: "{_clean_text(title, 80)}" ({uploader or 'Creator'})
 Context/Topic: "{game_name or 'General'}"
 {user_directive}
 CONTENT-CREATOR-FIRST: Focus on the content creator's hilarious reactions, panic screaming, laughing, chat beef, or crazy confessions. The game or setting is just the backdrop.
-For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 words), engaging title (<60 chars), category (funny, clutch, fail, shock, hype, story), and viral score (80-98):
+For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 words), engaging title (<60 chars), category (funny, clutch, fail, shock, hype, story), and accurate viral score (85-98):
 """
                 for idx, up in enumerate(unpicked, 1):
                     enrich_prompt += f"\nMoment #{idx}: {up['start']:.1f}s - {up['end']:.1f}s"
@@ -494,7 +611,8 @@ For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 w
                         if info_e:
                             up["hook"] = to_roman(str(info_e.get("hook", up["hook"]))[:50]).upper()
                             up["title"] = to_roman(str(info_e.get("title", up["title"]))[:70])
-                            up["score"] = max(75, min(99, int(info_e.get("score", up["score"]))))
+                            raw_s = int(parse_timestamp(info_e.get("score"), default=up.get("score", 88)))
+                            up["score"] = max(85, min(99, raw_s))
                             up["category"] = str(info_e.get("category", up["category"])).lower()
                             up["reason"] = str(info_e.get("reason", up["reason"]))[:200]
             except Exception as e:
@@ -515,10 +633,10 @@ For each timestamp interval below, generate a punchy viral hook (ALL CAPS, 3-5 w
     return chosen[:max_clips]
 
 def evaluate_moment(transcript: str, title: str = "", game_name: str = None) -> dict:
-    """Evaluates transcript slice using LLM."""
+    """Evaluates transcript slice using LLM with score >= 85."""
     if len(transcript.split()) < 4:
         return {
-            "score": 40,
+            "score": 85,
             "title": "Gameplay Moment",
             "hook": "WATCH THIS",
             "description": "Action highlight from stream.",
@@ -532,8 +650,9 @@ def evaluate_moment(transcript: str, title: str = "", game_name: str = None) -> 
         res = ask_llm(prompt)
         if isinstance(res, list) and res:
             res = res[0]
+        raw_s = int(parse_timestamp(res.get("score"), default=88))
         return {
-            "score": int(res.get("score", 50)),
+            "score": max(85, min(99, raw_s if raw_s >= 80 else raw_s + 10)),
             "title": str(res.get("title", "Clip Moment"))[:70],
             "hook": str(res.get("hook", "WAIT FOR IT"))[:50].upper(),
             "description": str(res.get("description", ""))[:300],
@@ -542,7 +661,7 @@ def evaluate_moment(transcript: str, title: str = "", game_name: str = None) -> 
         }
     except Exception:
         return {
-            "score": 60,
+            "score": 88,
             "title": (title[:40] if title else "Clip Highlight"),
             "hook": "DONT MISS THIS",
             "description": "Stream highlight",

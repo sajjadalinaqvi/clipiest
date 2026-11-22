@@ -37,11 +37,13 @@ def transcribe_audio_segment(
     start: float,
     end: float,
     data_dir: Path,
-    language: str = None,
+    language: str = "en",
     report_fn=lambda msg: None
 ) -> dict:
-    """Transcribes audio slice with word timestamps using Faster-Whisper."""
-    report_fn("Transcribing audio segment...")
+    """Transcribes audio slice with word timestamps using Faster-Whisper.
+    Enforces strict English-only transcription. No other language is allowed.
+    """
+    report_fn("Transcribing audio segment in English...")
     out_wav = data_dir / f"temp_{src_path.stem}_{uuid.uuid4().hex[:8]}_{start:.1f}_{end:.1f}.wav"
     try:
         subprocess.run(
@@ -50,20 +52,21 @@ def transcribe_audio_segment(
             capture_output=True, check=True, timeout=120, creationflags=NO_WINDOW
         )
         model = get_whisper()
-        lang_arg = "hi" if language == "hinglish" else language
+        # Strict English transcription only: no Hindi or other languages permitted
         segments, info = model.transcribe(
             str(out_wav),
             beam_size=5,
             word_timestamps=True,
             vad_filter=True,
-            language=lang_arg
+            language="en"
         )
         words = []
         for s in segments:
             for w in (s.words or []):
                 txt = w.word.strip()
-                if language == "hinglish":
-                    txt = to_roman(txt)
+                # Filter out any non-ASCII / non-Latin characters (reject Hindi/Devanagari)
+                if re.search(r"[\u0900-\u097F]", txt):
+                    continue
                 if txt and w.end > w.start:
                     words.append({
                         "start": round(max(0.0, w.start), 3),
@@ -72,34 +75,51 @@ def transcribe_audio_segment(
                     })
         return {
             "words": words,
-            "language": info.language,
+            "language": "en",
             "duration": end - start
         }
     finally:
         out_wav.unlink(missing_ok=True)
 
 def youtube_words_from_info(info: dict) -> list | None:
-    """Extracts YouTube's native word-timed auto-captions (json3) in ~1 second."""
+    """Extracts YouTube's native word-timed auto-captions (json3) in ~1 second.
+    Enforces strict English-only tracks (en, en-orig, en-US, etc.). Never captures Hindi or other languages.
+    """
     auto = info.get("automatic_captions") or {}
     manual = info.get("subtitles") or {}
-    lang = info.get("language") or ""
-    
+
+    # Strict English priority: never select Hindi or arbitrary foreign language tracks
+    en_candidates = [
+        "en-orig", "en", "en-US", "en-GB", "en-CA", "en-AU", "en-IN", "en-IE", "en-NZ"
+    ]
     key = None
-    if lang and f"{lang}-orig" in auto:
-        key = f"{lang}-orig"
-    elif lang and lang in auto:
-        key = lang
-    elif "en-orig" in auto:
-        key = "en-orig"
-    elif auto:
-        key = next(iter(auto))
-        
-    group = auto
-    if not key and manual:
-        key = next(iter(manual))
-        group = manual
-        
+    group = None
+
+    for cand in en_candidates:
+        if cand in auto:
+            key = cand
+            group = auto
+            break
+        if cand in manual:
+            key = cand
+            group = manual
+            break
+
     if not key:
+        # Search for any track explicitly prefixed with 'en'
+        for k in auto:
+            if k.lower() == "en" or k.lower().startswith("en-"):
+                key = k
+                group = auto
+                break
+        if not key:
+            for k in manual:
+                if k.lower() == "en" or k.lower().startswith("en-"):
+                    key = k
+                    group = manual
+                    break
+
+    if not key or not group:
         return None
         
     track = next((f for f in group.get(key, []) if f.get("ext") == "json3" and f.get("url")), None)

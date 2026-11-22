@@ -612,6 +612,14 @@ function setupControls() {
   // Tools toggle (Cam vs Game)
   $('tool-cam').onclick = () => setActiveTool('cam');
   $('tool-game').onclick = () => setActiveTool('game');
+  if ($('game-fit-screen-btn')) {
+    $('game-fit-screen-btn').onclick = () => {
+      setActiveTool('game');
+      appState.rect.game = { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
+      drawSourceCanvas();
+      drawPhonePreview();
+    };
+  }
 
   // Facecam height slider
   $('top-h-slider').oninput = (e) => {
@@ -1108,12 +1116,18 @@ function renderLoop() {
   sourceCtx.fillRect(gx, gy, gw, gh);
 
   // Gameplay Label
+  const isWholeGame = (g.w >= 0.88 && g.h >= 0.88);
+  const labelText = isWholeGame
+    ? (isGameActive ? '★ GAMEPLAY (WHOLE SCREEN FIT)' : 'GAMEPLAY (16:9 FIT)')
+    : (isGameActive ? '★ GAMEPLAY (ACTIVE)' : 'GAMEPLAY');
+  const labelWidth = isWholeGame ? 190 : 140;
+
   sourceCtx.fillStyle = isGameActive ? '#06b6d4' : 'rgba(6, 182, 212, 0.7)';
-  sourceCtx.fillRect(gx, Math.max(0, gy - 20), Math.min(gw, 140), 20);
+  sourceCtx.fillRect(gx, Math.max(0, gy - 20), Math.min(gw, labelWidth), 20);
   sourceCtx.fillStyle = '#000';
   sourceCtx.font = 'bold 10px Plus Jakarta Sans, sans-serif';
   sourceCtx.textAlign = 'left';
-  sourceCtx.fillText(isGameActive ? '★ GAMEPLAY (ACTIVE)' : 'GAMEPLAY', gx + 6, Math.max(14, gy - 6));
+  sourceCtx.fillText(labelText, gx + 6, Math.max(14, gy - 6));
 
   if (isGameActive) {
     drawHandles(sourceCtx, gx, gy, gw, gh, '#06b6d4');
@@ -1219,20 +1233,38 @@ function drawPhonePreview() {
       const sw = Math.max(1, Math.min(nw - sx, box.w * nw));
       const sh = Math.max(1, Math.min(nh - sy, box.h * nh));
 
-      // Replicate FFmpeg scale=lw:lh:force_original_aspect_ratio=increase,crop=lw:lh
-      // Scale source crop so it covers (lw, lh) while preserving aspect ratio (zero stretching)
-      const scale = Math.max(lw / sw, lh / sh);
-      const srcUsedW = Math.min(sw, lw / scale);
-      const srcUsedH = Math.min(sh, lh / scale);
-      const srcOffX = sx + (sw - srcUsedW) / 2;
-      const srcOffY = sy + (sh - srcUsedH) / 2;
+      const isWholeScreenGame = (layer.source === 'game' || layer.source === 'full') &&
+                                (box.w >= 0.88 && box.h >= 0.88);
 
-      previewCtx.drawImage(
-        img,
-        Math.max(0, srcOffX), Math.max(0, srcOffY),
-        Math.min(nw - Math.max(0, srcOffX), srcUsedW), Math.min(nh - Math.max(0, srcOffY), srcUsedH),
-        lx, ly, lw, lh
-      );
+      if (isWholeScreenGame) {
+        // Fit whole 16:9 screen in the 9:16 target layer (zero cropping of minimap, HUD, or sides)
+        const scale = Math.min(lw / sw, lh / sh);
+        const drawW = sw * scale;
+        const drawH = sh * scale;
+        const drawX = lx + (lw - drawW) / 2;
+        const drawY = ly + (lh - drawH) / 2;
+
+        previewCtx.drawImage(
+          img,
+          sx, sy, sw, sh,
+          drawX, drawY, drawW, drawH
+        );
+      } else {
+        // Replicate FFmpeg scale=lw:lh:force_original_aspect_ratio=increase,crop=lw:lh
+        // Scale source crop so it covers (lw, lh) while preserving aspect ratio (zero stretching)
+        const scale = Math.max(lw / sw, lh / sh);
+        const srcUsedW = Math.min(sw, lw / scale);
+        const srcUsedH = Math.min(sh, lh / scale);
+        const srcOffX = sx + (sw - srcUsedW) / 2;
+        const srcOffY = sy + (sh - srcUsedH) / 2;
+
+        previewCtx.drawImage(
+          img,
+          Math.max(0, srcOffX), Math.max(0, srcOffY),
+          Math.min(nw - Math.max(0, srcOffX), srcUsedW), Math.min(nh - Math.max(0, srcOffY), srcUsedH),
+          lx, ly, lw, lh
+        );
+      }
       previewCtx.restore();
     }
   }

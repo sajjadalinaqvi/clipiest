@@ -1,6 +1,11 @@
 import unittest
+import sys
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 import numpy as np
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from clipiest.ai.brain import find_viral_moments_ai
 from clipiest.server import api_llm_ping

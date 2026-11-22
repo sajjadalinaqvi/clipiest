@@ -986,7 +986,8 @@ def api_slice_captions(body: dict):
     """Step 3f: Transcribes the slice using Faster-Whisper to produce exact word timestamps and hook."""
     slice_id = str(body.get("slice_id", ""))
     hook = str(body.get("hook", ""))
-    lang = body.get("lang") or None
+    # Enforce English-only captions (no other language allowed)
+    lang = "en"
 
     slice_p = next((p for p in (DATA_DIR / "slices").glob(f"{slice_id}.*") if p.suffix in (".mp4", ".mkv", ".webm")), None)
     if not slice_p or not slice_p.exists():

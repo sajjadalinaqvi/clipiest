@@ -263,6 +263,7 @@
                 <div class="crop-selectors">
                   <button id="tool-cam" class="tool-btn active"><span class="box-cam"></span> Facecam Box</button>
                   <button id="tool-game" class="tool-btn"><span class="box-game"></span> Gameplay Box</button>
+                  <button type="button" id="game-fit-screen-btn" class="tool-btn" style="background:rgba(6,182,212,0.15);border-color:#06b6d4;color:#06b6d4;" title="Select and fit whole screen for gameplay (16:9 Fit)">⛶ Fit Whole Screen</button>
                 </div>
                 <div class="canvas-time-inputs">
                   <label>Start: <input type="number" id="time-start" value="0" min="0" step="0.5">s</label>
@@ -353,10 +354,7 @@
               <div class="field">
                 <label>Spoken Language</label>
                 <select id="caption-lang">
-                  <option value="">Auto (Devanagari/Hindi → Hinglish)</option>
-                  <option value="hinglish">Hinglish (Hindi in Latin script)</option>
-                  <option value="hi">हिंदी (Devanagari script)</option>
-                  <option value="en">English</option>
+                  <option value="en" selected>English (Strict)</option>
                 </select>
               </div>
               <div class="field">
