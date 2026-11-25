@@ -77,19 +77,24 @@ def find_exact_section_start(master_audio_path: Path, section_video_path: Path, 
     corr = np.fft.irfft(np.fft.rfft(hay, size) * np.conj(np.fft.rfft(needle, size)), size)[:len(hay) - len(needle) + 1]
     return a0 + int(np.argmax(corr)) / 8000.0
 
-def download_video_section(url: str, out_dir: Path, name: str, start: float, end: float, height: int = 720) -> Path:
-    """Downloads only the required time slice of a video using yt-dlp download_ranges with robust FFmpeg fallback."""
+def download_video_section(url: str, out_dir: Path, name: str, start: float, end: float, height: int = 720, pad: float = PAD_SEC) -> Path:
+    """Downloads only the required time slice of a video using yt-dlp download_ranges with robust FFmpeg fallback.
+    Set pad=0.0 for exact slice/export cuts (avoiding pre-roll dead air before the hook)."""
     from yt_dlp.utils import download_range_func
     out_dir.mkdir(parents=True, exist_ok=True)
     out_tmpl = str(out_dir / f"{name}.%(ext)s")
+    s_time = max(0.0, start - pad)
+    e_time = end + (1.0 if pad > 0 else 0.15)
     
-    # 1. Primary: yt-dlp download_ranges (fastest for YouTube DASH)
+    # 1. Primary: yt-dlp download_ranges (fastest for YouTube DASH & Kick/Twitch HLS)
     opts = {
         "format": f"bv*[height<={height}]+ba/b[height<={height}]/b",
         "merge_output_format": "mp4",
         "outtmpl": out_tmpl,
-        "download_ranges": download_range_func(None, [(max(0.0, start - PAD_SEC), end + 1.0)])
+        "download_ranges": download_range_func(None, [(s_time, e_time)])
     }
+    if pad == 0:
+        opts["force_keyframes_at_cuts"] = True
     try:
         with get_ytdl(opts) as y:
             y.download([url])
@@ -113,8 +118,7 @@ def download_video_section(url: str, out_dir: Path, name: str, start: float, end
         
         if stream_url:
             out_mp4 = out_dir / f"{name}.mp4"
-            s_time = max(0.0, start - PAD_SEC)
-            dur = max(2.0, (end + 1.0) - s_time)
+            dur = max(2.0, e_time - s_time)
             cmd = [
                 "ffmpeg", "-y", "-v", "error",
                 "-ss", f"{s_time:.2f}",

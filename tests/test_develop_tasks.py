@@ -456,5 +456,29 @@ class TestDevelopRequirements(unittest.TestCase):
         self.assertAlmostEqual(clip["start"], 101.65, places=2)
         self.assertLess(words[0]["start"], 0.25)
 
+    def test_download_video_section_zero_pad_exact_cut(self):
+        """Verifies pad=0.0 slices at exact start/end without 4s pre-roll dead air."""
+        from clipiest.pipeline.downloader import download_video_section
+        captured_opts = {}
+
+        class FakeYTDL:
+            def __init__(self, opts):
+                captured_opts.update(opts)
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def download(self, urls):
+                out_p = Path(captured_opts["outtmpl"].replace("%(ext)s", "mp4"))
+                out_p.write_bytes(b"0" * 6000)
+
+        with tempfile.TemporaryDirectory() as td:
+            with patch("clipiest.pipeline.downloader.get_ytdl", side_effect=FakeYTDL), \
+                 patch("yt_dlp.utils.download_range_func", side_effect=lambda _, ranges: ranges):
+                res = download_video_section("https://kick.com/test/1", Path(td), "clip1", 8000.0, 8045.0, pad=0.0)
+                self.assertTrue(res.exists())
+                self.assertEqual(captured_opts["download_ranges"], [(8000.0, 8045.15)])
+                self.assertTrue(captured_opts.get("force_keyframes_at_cuts"))
+
 if __name__ == "__main__":
     unittest.main()

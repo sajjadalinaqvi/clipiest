@@ -119,9 +119,9 @@ def render_clip(
             encoders.append(("nvenc", ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-pix_fmt", "yuv420p"]))
         if HAS_QSV:
             encoders.append(("qsv", ["-c:v", "h264_qsv", "-global_quality", "23", "-preset", "fast", "-pix_fmt", "nv12"]))
-        # Limit x264 threads to avoid CPU starvation
+        # Limit x264 threads to avoid CPU starvation; CRF 19 High Profile yields crisp vertical shorts
         x264_threads = str(max(1, (os.cpu_count() or 4) - 2))
-        encoders.append(("libx264", ["-c:v", "libx264", "-crf", "20", "-preset", "fast", "-pix_fmt", "yuv420p", "-threads", x264_threads]))
+        encoders.append(("libx264", ["-c:v", "libx264", "-crf", "19", "-preset", "fast", "-profile:v", "high", "-level", "4.1", "-pix_fmt", "yuv420p", "-threads", x264_threads]))
 
         err = None
         encoder_used = "libx264"

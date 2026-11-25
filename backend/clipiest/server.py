@@ -604,7 +604,7 @@ def manual_export(body: dict):
             elif not target_src or not target_src.exists():
                 from .pipeline.downloader import download_video_section
                 state[job_id] = {"status": "downloading", "progress": 0.3, "stage": "Downloading requested slice..."}
-                target_src = download_video_section(url, out_dir, f"raw_{clip_id}", start, end)
+                target_src = download_video_section(url, out_dir, f"raw_{clip_id}", start, end, pad=0.0)
                 slice_start = 0.0
                 slice_end = min(probe_video(target_src)["duration"], end - start)
 
@@ -862,7 +862,12 @@ def api_scout_moments(body: dict):
                     )
                 elif is_ranged:
                     print(f"[Scout] Scanning audio loudness & transcribing range {scan_start:.0f}s - {scan_end:.0f}s from local video...")
-                    rms, _ = _audio_profile(audio_file)
+                    rms_slice, _ = _audio_profile(audio_file, start=scan_start, end=scan_end)
+                    if len(rms_slice):
+                        s_i = min(len(rms), int(scan_start))
+                        take = min(len(rms_slice), len(rms) - s_i)
+                        if take > 0:
+                            rms[s_i:s_i + take] = rms_slice[:take]
                     yt_words = transcribe_full_audio(
                         audio_file, duration, DATA_DIR / "tmp",
                         start_sec=scan_start, end_sec=scan_end, log=print
@@ -910,6 +915,8 @@ def get_hook_styles():
     from .rendering.captions import HOOK_STYLES
     return [{"id": k, **v} for k, v in HOOK_STYLES.items()]
 
+_PREVIEW_STREAM_CACHE: dict[str, tuple[float, str]] = {}
+
 @app.get("/api/preview/frame")
 def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_id: str = ""):
     """Step 3b: Returns a screenshot/frame at the exact requested timestamp."""
@@ -939,21 +946,27 @@ def api_get_preview_frame(id: str = "", url: str = "", sec: float = 0.0, slice_i
         if out_p.exists():
             return FileResponse(out_p, media_type="image/jpeg")
 
-    # 3. Stream extraction via yt-dlp low-res format directly from video stream at the requested timestamp
+    # 3. Stream extraction via cached yt-dlp low-res format directly from video stream at requested timestamp
     if url:
         try:
-            from .pipeline.downloader import get_ytdl
-            with get_ytdl({'skip_download': True, 'quiet': True}) as y:
-                info = y.extract_info(url, download=False)
-            formats = [f for f in info.get("formats", []) if f.get("vcodec") not in (None, "none") and f.get("url") and f.get("height", 9999) <= 480]
-            st_url = max(formats, key=lambda f: f.get("height", 0))["url"] if formats else info.get("url")
+            cached = _PREVIEW_STREAM_CACHE.get(url)
+            st_url = cached[1] if (cached and (time.time() - cached[0]) < 600) else None
+            if not st_url:
+                from .pipeline.downloader import get_ytdl
+                with get_ytdl({'skip_download': True, 'quiet': True}) as y:
+                    info = y.extract_info(url, download=False)
+                formats = [f for f in info.get("formats", []) if f.get("vcodec") not in (None, "none") and f.get("url") and f.get("height", 9999) <= 480]
+                st_url = max(formats, key=lambda f: f.get("height", 0))["url"] if formats else info.get("url")
+                if st_url:
+                    _PREVIEW_STREAM_CACHE[url] = (time.time(), st_url)
             if st_url:
                 cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{sec:.2f}", "-i", st_url, "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "2", str(out_p)]
                 subprocess.run(cmd, capture_output=True, timeout=20, creationflags=0x08000000 if os.name == "nt" else 0)
                 if out_p.exists():
                     return FileResponse(out_p, media_type="image/jpeg")
+                _PREVIEW_STREAM_CACHE.pop(url, None)
         except Exception:
-            pass
+            _PREVIEW_STREAM_CACHE.pop(url, None)
 
     # 4. Fallback only if live seeking fails: check storyboard frames in data folder
     if id:
@@ -1011,7 +1024,7 @@ def api_fetch_slice(body: dict):
     elif url:
         try:
             from .pipeline.downloader import download_video_section
-            sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality)
+            sec_file = download_video_section(url, out_dir, slice_id, start, end, height=quality, pad=0.0)
         except Exception as e:
             raise HTTPException(500, f"Failed to fetch slice: {clean_error_message(e)}")
     else:

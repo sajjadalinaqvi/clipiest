@@ -2135,6 +2135,7 @@ async function generateCaptionsAndHook() {
     if (res.hook && !$('hook-input').value) {
       $('hook-input').value = res.hook;
     }
+    drawPhonePreview();
 
     if (statusEl) {
       statusEl.className = 'status-message active-success';

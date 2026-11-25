@@ -66,8 +66,14 @@ def _optical_flow_parallel(source, duration, report_fn):
     c = np.concatenate([parts[s][1] for s in starts]) if starts else np.zeros(0)
     return f, c
 
-def _audio_profile(source):
-    cmd = ["ffmpeg", "-v", "error", "-i", str(source), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"]
+def _audio_profile(source, start: float = 0.0, end: float | None = None):
+    cmd = ["ffmpeg", "-v", "error"]
+    if start > 0:
+        cmd += ["-ss", f"{start:.2f}"]
+    cmd += ["-i", str(source)]
+    if end is not None and end > start:
+        cmd += ["-t", f"{end - start:.2f}"]
+    cmd += ["-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"]
     raw = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW).stdout
     x = np.frombuffer(raw[:len(raw) // 2 * 2], np.int16).astype(np.float32) / 32768
     n = len(x) // 8000
