@@ -796,30 +796,29 @@ def api_scout_moments(body: dict):
         if not yt_words:
             if url and not is_age_restricted:
                 try:
+                    from .pipeline.downloader import select_lowest_audio_format
                     audio_dir = DATA_DIR / "tmp" / f"scout_{uuid.uuid4().hex[:8]}"
                     audio_dir.mkdir(parents=True, exist_ok=True)
-                    with get_ytdl({"format": "ba/b", "outtmpl": str(audio_dir / "audio.%(ext)s")}) as y:
+                    tmp_clean.append(audio_dir)
+                    fmt = select_lowest_audio_format(info)
+                    print(f"[Scout] Downloading lightweight audio track ({fmt}) for full-video analysis...")
+                    with get_ytdl({
+                        "format": fmt,
+                        "outtmpl": str(audio_dir / "audio.%(ext)s"),
+                        "concurrent_fragment_downloads": 8
+                    }) as y:
                         y.download([url])
                     cand_audio = [f for f in audio_dir.glob("audio.*") if f.suffix not in (".part", ".ytdl")]
                     if cand_audio:
                         audio_file = cand_audio[0]
-                        tmp_clean.append(audio_dir)
                 except Exception:
                     audio_file = None
 
             if audio_file and audio_file.exists():
+                from .audio.transcribe import transcribe_full_audio
+                print(f"[Scout] Scanning full audio loudness and transcribing entire video ({duration:.0f}s)...")
                 rms, _ = _audio_profile(audio_file)
-                candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False)
-                words = []
-                for c in candidates[:min(6, len(candidates))]:
-                    res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
-                    for w in res.get("words", []):
-                        words.append({
-                            "start": c["start"] + w["start"],
-                            "end": c["start"] + w["end"],
-                            "text": w["text"]
-                        })
-                yt_words = sorted(words, key=lambda x: x["start"])
+                yt_words = transcribe_full_audio(audio_file, duration, DATA_DIR / "tmp", log=print)
 
         moments = find_viral_moments_ai(
             words=yt_words or [],

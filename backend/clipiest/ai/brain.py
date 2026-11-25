@@ -164,60 +164,59 @@ def parse_timestamp(v, default: float = -1.0) -> float:
     except Exception:
         return default
 
-def extract_high_energy_transcript(chunk: list, limit_chars: int = 6500) -> str:
-    """Intelligently clusters transcript lines around loudness peaks, reaction words,
-    and questions/exclamations across the ENTIRE chunk (Start, MIDDLE, and End)
-    to give the LLM full, coherent viral scenes without truncating middle/late timestamps."""
+def extract_high_energy_transcript(chunk: list, limit_chars: int = 5800) -> str:
+    """Extracts high-energy climaxes PLUS evenly distributed narrative anchor scenes across the
+    ENTIRE window so local LLMs (e.g. Qwen 9B) read both explosive peaks and calm banter/stories."""
     if not chunk:
         return ""
-    if len(chunk) <= 50:
-        return format_transcript_lines(chunk, limit_chars=limit_chars)
-    
-    # 1. Identify climaxes and explosive moments
+    full_fmt = format_transcript_lines(chunk, limit_chars=limit_chars + 500)
+    if len(full_fmt) <= limit_chars:
+        return full_fmt
+
+    # 1. Identify climaxes and interesting conversational moments
     climax_indices = []
     hot_words = {
         "kill", "dead", "omg", "god", "bro", "clutch", "run", "no way", "what",
         "how", "wait", "look", "insane", "hacker", "aimbot", "shot", "fail", "win",
-        "lost", "die", "screaming", "laughing", "unreal", "no", "yes", "stop", "dude"
+        "lost", "die", "screaming", "laughing", "unreal", "no", "yes", "stop", "dude",
+        "crazy", "wtf", "hell", "fuck", "shit", "chat", "swear", "story", "clip", "roast"
     }
     for idx, l in enumerate(chunk):
         txt_l = l["text"].lower()
         is_hot = l.get("loud") or "!" in txt_l or "?" in txt_l or any(hw in txt_l for hw in hot_words)
         if is_hot:
             climax_indices.append(idx)
-            
-    if not climax_indices:
-        step = max(1, len(chunk) // 40)
-        return format_transcript_lines(chunk[::step], limit_chars=limit_chars)
-        
-    # 2. Stratify climaxes across 3 phases (Start: 0-33%, Middle: 33-66%, Late: 66-100%)
+
+    # 2. Stratify climaxes across 3 phases + evenly spaced narrative anchors
     n_lines = len(chunk)
     c_early = [i for i in climax_indices if i < 0.35 * n_lines]
     c_mid = [i for i in climax_indices if 0.30 * n_lines <= i <= 0.70 * n_lines]
     c_late = [i for i in climax_indices if i > 0.65 * n_lines]
 
-    chosen_climaxes = set()
-    # Ensure representation from each phase, especially the middle
+    chosen_anchors = set()
     for pool in (c_early, c_mid, c_late):
         if pool:
             k = min(4, len(pool))
-            indices = np.linspace(0, len(pool) - 1, k, dtype=int)
-            for idx in indices:
-                chosen_climaxes.add(pool[idx])
+            for idx in np.linspace(0, len(pool) - 1, k, dtype=int):
+                chosen_anchors.add(pool[idx])
+
+    # Always include evenly spaced narrative anchors so non-loud stories/banter aren't missed
+    for idx in np.linspace(0, n_lines - 1, min(8, n_lines), dtype=int):
+        chosen_anchors.add(int(idx))
 
     for ci in climax_indices:
-        if len(chosen_climaxes) >= 14:
+        if len(chosen_anchors) >= 18:
             break
-        chosen_climaxes.add(ci)
+        chosen_anchors.add(ci)
 
-    # 3. Build context bubbles around the chosen climaxes (-3 to +5 lines)
+    # 3. Build context bubbles around selected anchors (-2 to +4 lines)
     selected_indices = set()
-    for ci in chosen_climaxes:
-        for offset in range(-3, 6):
+    for ci in chosen_anchors:
+        for offset in range(-2, 5):
             target = ci + offset
-            if 0 <= target < len(chunk):
+            if 0 <= target < n_lines:
                 selected_indices.add(target)
-                
+
     clustered_lines = [chunk[i] for i in sorted(selected_indices)]
     return format_transcript_lines(clustered_lines, limit_chars=limit_chars)
 
@@ -421,21 +420,28 @@ Format strictly as a JSON array of objects:
         log("Using loudness/excitation energy fallback.")
         return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration, title=title)
 
+    # Partition the ENTIRE timeline cleanly so the LLM reads 100% of the video
+    # (15-min windows up to ~2.5h; dynamically scaled up to ~10 windows for ultra-long 3h-5h+ streams)
+    win_sec = max(float(WINDOW_SEC), duration / 10.0) if duration > 0 else float(WINDOW_SEC)
+    overlap = min(float(OVERLAP_SEC), win_sec * 0.1)
+    step = max(60.0, win_sec - overlap)
+
     windows = []
     t = 0.0
     while t < duration:
-        windows.append((t, min(duration, t + WINDOW_SEC)))
-        t += WINDOW_SEC - OVERLAP_SEC
+        windows.append((t, min(duration, t + win_sec)))
+        if t + win_sec >= duration:
+            break
+        t += step
 
-    # Score each window by loudness energy, hype punctuation, and speech activity
+    # Collect every window containing speech across the entire video
     window_candidates = []
     for idx, (a, b) in enumerate(windows):
         chunk = [l for l in lines if a <= l["s"] < b]
-        if len(chunk) < 3:
+        if len(chunk) < 2:
             continue
         loud_cnt = sum(1 for l in chunk if l.get("loud"))
         punc_cnt = sum(l["text"].count("!") + l["text"].count("?") for l in chunk)
-        # Weight loud peaks heavily (4x) and energetic punctuation (2x)
         excitement_score = loud_cnt * 4.0 + punc_cnt * 2.0 + len(chunk) * 1.0
         window_candidates.append({
             "idx": idx,
@@ -455,56 +461,34 @@ Format strictly as a JSON array of objects:
             "chunk": lines
         })
 
-    # Timeline window selection: Ensure Start, Middle, and Late coverage
-    window_candidates.sort(key=lambda x: -x["score"])
-    chosen_wins = []
-    if window_candidates:
-        # 1. Best overall window
-        chosen_wins.append(window_candidates[0])
-
-        # 2. Middle window (if duration > 180s and middle window exists)
-        if duration > 180:
-            mid_candidates = [
-                w for w in window_candidates
-                if (0.25 * duration <= w["a"] <= 0.75 * duration) or (w["a"] <= 0.50 * duration and w["b"] >= 0.50 * duration)
-            ]
-            if mid_candidates:
-                mid_best = sorted(mid_candidates, key=lambda x: -x["score"])[0]
-                if mid_best not in chosen_wins:
-                    chosen_wins.append(mid_best)
-
-        # 3. Supplemental window if max_clips > 3
-        if max_clips > 3:
-            for w in window_candidates[1:]:
-                if w not in chosen_wins:
-                    chosen_wins.append(w)
-                    if len(chosen_wins) >= 3:
-                        break
-
-    selected_windows = sorted(chosen_wins, key=lambda x: x["a"])
+    # Evaluate ALL windows chronologically across the whole timeline (never skip middle/end)
+    selected_windows = sorted(window_candidates, key=lambda x: x["a"])
 
     game_rule = f"This stream context is {game_name}. Focus primarily on the content creator's reactions, fails, roasts, or clutches." if game_name else ""
     found_moments = []
-    ai_success = False
+    win_quota = max_clips if len(selected_windows) <= 1 else min(max_clips, 3)
 
-    for win in selected_windows:
+    for w_idx, win in enumerate(selected_windows, 1):
         a, b, chunk = win["a"], win["b"], win["chunk"]
-        # Intelligently cluster around climaxes, screams, and reaction lines across entire chunk
-        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=6500)
+        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=5800)
+        window_note = (
+            f"\nSegment Scope ({w_idx}/{len(selected_windows)}): {a:.0f}s to {b:.0f}s of {duration:.0f}s total. "
+            f"Use exact [seconds] timestamps from <transcript>. Return [] if this segment has no genuine 85+ viral moment.\n"
+        )
         prompt = (
             HEAD.format(
                 title=_clean_text(title, 80) or "Video",
                 uploader=_clean_text(uploader, 50) or "Channel",
-                n=max_clips,
+                n=win_quota,
                 game_rule=game_rule,
-                user_directive=user_directive
+                user_directive=user_directive + window_note
             )
-            + RULES.format(n=max_clips, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
+            + RULES.format(n=win_quota, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
         )
-        
+
         try:
-            log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.65)
+            log(f"Querying LLM ({w_idx}/{len(selected_windows)}) for viral moments in {a:.0f}s - {b:.0f}s...")
+            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.6)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
@@ -515,7 +499,15 @@ Format strictly as a JSON array of objects:
                     en = parse_timestamp(c.get("end"), default=-1.0)
                     if st < 0 or en <= st:
                         continue
-                    # Ensure times stay within allowed range
+
+                    # Correct window-relative timestamps if a local 9B model returned offset from 0s
+                    if a > 120 and st < (b - a):
+                        has_abs = any(st - 3.0 <= float(w.get("start", w.get("s", 0))) <= en + 3.0 for w in words)
+                        has_rel = any(st + a - 3.0 <= float(w.get("start", w.get("s", 0))) <= en + a + 3.0 for w in words)
+                        if not has_abs and has_rel:
+                            st += a
+                            en += a
+
                     dur = en - st
                     if dur < min_len * 0.7:
                         en = st + min_len
@@ -523,11 +515,12 @@ Format strictly as a JSON array of objects:
                         en = st + max_len
                     st = max(0.0, min(duration - 5, st))
                     en = min(duration, max(st + 5, en))
-                    
+
                     cat = str(c.get("category", "other")).lower()
                     raw_score = int(parse_timestamp(c.get("score"), default=88))
-                    # Enforce score >= 85 requirement
+                    # Enforce score >= 85 requirement while preserving genuine rank order
                     score_val = max(85, min(99, raw_score if raw_score >= 80 else raw_score + 10))
+                    has_speech = any(st - 1.0 <= float(w.get("start", w.get("s", 0))) <= en + 1.0 for w in words)
 
                     found_moments.append({
                         "start": round(st, 2),
@@ -539,18 +532,15 @@ Format strictly as a JSON array of objects:
                         "description": to_roman(str(c.get("description", ""))[:300]),
                         "hashtags": [re.sub(r"\W", "", str(h))[:25] for h in c.get("hashtags", []) if h][:6],
                         "highlight_words": [to_roman(str(hw)) for hw in c.get("highlight_words", []) if hw][:6],
-                        "reason": str(c.get("reason", "Viral moment"))[:200]
+                        "reason": str(c.get("reason", "Viral moment"))[:200],
+                        "_has_speech": has_speech
                     })
-                ai_success = True
-                # If we've gathered enough strong moments, stop early and avoid redundant LLM calls
-                if len(found_moments) >= max_clips:
-                    break
         except Exception as e:
             log(f"AI scouting window {a:.0f}-{b:.0f}s failed: {e}")
 
-    # Deduplicate and snap
+    # Rank globally across the ENTIRE video (prefer verified spoken scenes and highest scores)
     chosen = []
-    found_moments.sort(key=lambda m: -m["score"])
+    found_moments.sort(key=lambda m: (-m["score"], -int(m.pop("_has_speech", True))))
     
     for m in found_moments:
         if _overlaps(m["start"], m["end"], chosen):

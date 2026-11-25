@@ -10,6 +10,32 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 BELOW_NORMAL_PRIORITY = 0x00004000 if os.name == "nt" else 0
 SUBPROC_FLAGS = NO_WINDOW | BELOW_NORMAL_PRIORITY
 
+def select_lowest_audio_format(info: dict | None) -> str:
+    """Selects the smallest format containing audio for fast scouting (audio-only first, else lowest-height stream)."""
+    formats = (info or {}).get("formats") or []
+    audio_only = [
+        f for f in formats
+        if f.get("format_id")
+        and f.get("acodec") not in (None, "none")
+        and f.get("vcodec") in (None, "none")
+    ]
+    if audio_only:
+        return "ba/b[height<=360]/w/b"
+
+    with_audio = [
+        f for f in formats
+        if f.get("format_id") and f.get("acodec") not in (None, "none")
+    ]
+    if with_audio:
+        with_audio.sort(key=lambda f: (
+            f.get("height") or 99999,
+            f.get("tbr") or f.get("abr") or 999999
+        ))
+        return f"{with_audio[0]['format_id']}/ba/b[height<=360]/w/b"
+
+    return "ba/b[height<=360]/b[height<=480]/w/b"
+
+
 def get_ytdl(extra_opts: dict = None):
     opts = {
         "noplaylist": True,

@@ -1,3 +1,4 @@
+
 """Tests for Clipiest Re-Edit System."""
 import unittest
 import sys

@@ -91,6 +91,16 @@ def test_llm_connection(provider: str, base_url: str = "", api_key: str = "", mo
         else:
             # LM Studio, Ollama, OpenAI, Groq, OpenRouter, Custom
             m_target = model or "qwen/qwen3.5-9b"
+            if provider in ("lmstudio", "custom", "ollama"):
+                try:
+                    with httpx.Client(timeout=3.0) as client:
+                        mr = client.get(f"{base_url}/models")
+                        if mr.status_code == 200:
+                            avail = [item["id"] for item in mr.json().get("data", []) if "id" in item and "embed" not in item["id"].lower()]
+                            if avail and m_target not in avail:
+                                m_target = avail[0]
+                except Exception:
+                    pass
             res = _call_openai_compat(base_url, m_target, api_key or "lm-studio", test_prompt, allow_fallback=False, max_tokens=32)
             
         latency = int((time.monotonic() - t0) * 1000)
@@ -248,7 +258,7 @@ def _call_openai_compat(base_url: str, model: str, key: str, prompt: str, allow_
     last_ex = None
     for target in urls_to_attempt:
         try:
-            with httpx.Client(timeout=httpx.Timeout(120.0, connect=2.0)) as client:
+            with httpx.Client(timeout=httpx.Timeout(180.0, connect=5.0)) as client:
                 target_model = payload["model"]
                 # Auto-align target model if local provider has loaded models
                 if allow_fallback and any(h in target for h in ("localhost", "127.0.0.1")):

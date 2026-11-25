@@ -321,5 +321,89 @@ class TestDevelopRequirements(unittest.TestCase):
             content = out_p.read_text(encoding="utf-8")
             self.assertIn("\\pos(540,1550)", content)
 
+    # -------------------------------------------------------------
+    # 6. Full-video Kick/VOD Scouting (lightweight audio + full timeline LLM)
+    # -------------------------------------------------------------
+    def test_select_lowest_audio_format_prefers_tiny_kick_stream(self):
+        """Verifies Kick HLS streams select 160p (~230kbps) instead of 1080p60 (~6700kbps) for audio scouting."""
+        from clipiest.pipeline.downloader import select_lowest_audio_format
+        kick_info = {
+            "formats": [
+                {"format_id": "1080p60", "height": 1080, "vcodec": "avc1", "acodec": "mp4a.40.2", "tbr": 6696.5},
+                {"format_id": "360p", "height": 360, "vcodec": "avc1", "acodec": "mp4a.40.2", "tbr": 630.0},
+                {"format_id": "160p", "height": 160, "vcodec": "avc1", "acodec": "mp4a.40.2", "tbr": 230.0},
+            ]
+        }
+        fmt = select_lowest_audio_format(kick_info)
+        self.assertTrue(fmt.startswith("160p/"), f"Expected 160p format, got: {fmt}")
+
+        yt_info = {
+            "formats": [
+                {"format_id": "251", "vcodec": "none", "acodec": "opus", "abr": 128},
+                {"format_id": "137", "height": 1080, "vcodec": "avc1", "acodec": "none"},
+            ]
+        }
+        self.assertTrue(select_lowest_audio_format(yt_info).startswith("ba/"))
+
+    def test_find_viral_moments_ai_corrects_relative_9b_timestamps(self):
+        """Verifies window-relative timestamps returned by 9B models are shifted to true global timestamps."""
+        words = [{"start": float(t), "end": float(t + 2.0), "text": "Insane moment!"} for t in range(1800, 2700, 5)]
+        db = np.zeros(2700)
+
+        def fake_llm(prompt, *args, **kwargs):
+            # Return relative offset (25s - 55s) inside the 1800s window
+            return [{
+                "start": 25.0,
+                "end": 55.0,
+                "score": 94,
+                "hook": "BRO SNAPPED",
+                "title": "Mid Stream Moment",
+                "category": "funny"
+            }]
+
+        with patch("clipiest.ai.brain.ask_llm", side_effect=fake_llm):
+            moments = find_viral_moments_ai(
+                words=words,
+                db=db,
+                duration=2700.0,
+                title="Kick Stream",
+                max_clips=1,
+                min_len=20.0,
+                max_len=50.0
+            )
+            self.assertEqual(len(moments), 1)
+            self.assertGreater(moments[0]["start"], 1500.0)
+
+    def test_transcribe_full_audio_chunks_whole_duration(self):
+        """Verifies transcribe_full_audio iterates across all 900s chunks covering the full video duration."""
+        from clipiest.audio.transcribe import transcribe_full_audio
+        with tempfile.TemporaryDirectory() as td:
+            td_p = Path(td)
+            dummy_src = td_p / "kick_vod.mp4"
+            dummy_src.write_bytes(b"fake")
+
+            chunk_calls = []
+
+            def fake_subproc(cmd, *args, **kwargs):
+                # Create dummy wav at the target path (last arg)
+                wav_p = Path(cmd[-1])
+                wav_p.write_bytes(b"0" * 2000)
+                chunk_calls.append(cmd)
+                m = MagicMock()
+                m.returncode = 0
+                return m
+
+            with patch("clipiest.audio.transcribe.get_whisper", return_value=MagicMock()), \
+                 patch("clipiest.audio.transcribe.subprocess.run", side_effect=fake_subproc), \
+                 patch("clipiest.audio.transcribe._transcribe_wav_chunk", side_effect=lambda model, wav, offset=0.0, **kw: [
+                     {"start": offset + 10.0, "end": offset + 12.0, "text": "Hello"}
+                 ]):
+                words = transcribe_full_audio(dummy_src, duration=2000.0, data_dir=td_p, chunk_sec=900.0, log=lambda *a: None)
+                # 2000s at 900s chunks -> 3 chunks (0-900, 900-1800, 1800-2000)
+                self.assertEqual(len(chunk_calls), 3)
+                self.assertEqual([w["start"] for w in words], [10.0, 910.0, 1810.0])
+                # Ensure all temp wavs were deleted
+                self.assertEqual(list(td_p.glob("full_*.wav")), [])
+
 if __name__ == "__main__":
     unittest.main()

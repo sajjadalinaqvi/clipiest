@@ -32,6 +32,40 @@ def get_whisper(model_size: str = WHISPER_MODEL):
         _WHISPER_INSTANCES[model_size] = m
         return m
 
+def _transcribe_wav_chunk(
+    model,
+    wav_path: Path,
+    offset: float = 0.0,
+    max_dur: float | None = None,
+    beam_size: int = 5
+) -> list:
+    """Runs Faster-Whisper on a WAV file in strict English-only mode and returns word dicts."""
+    segments, _ = model.transcribe(
+        str(wav_path),
+        beam_size=beam_size,
+        word_timestamps=True,
+        vad_filter=True,
+        language="en"
+    )
+    words = []
+    for s in segments:
+        for w in (s.words or []):
+            txt = w.word.strip()
+            # Filter out any non-ASCII / non-Latin characters (reject Hindi/Devanagari)
+            if re.search(r"[\u0900-\u097F]", txt):
+                continue
+            if txt and w.end > w.start:
+                st = max(0.0, w.start)
+                en = min(max_dur, w.end) if max_dur is not None else w.end
+                if en > st:
+                    words.append({
+                        "start": round(offset + st, 3),
+                        "end": round(offset + en, 3),
+                        "text": txt
+                    })
+    return words
+
+
 def transcribe_audio_segment(
     src_path: Path,
     start: float,
@@ -52,27 +86,7 @@ def transcribe_audio_segment(
             capture_output=True, check=True, timeout=120, creationflags=NO_WINDOW
         )
         model = get_whisper()
-        # Strict English transcription only: no Hindi or other languages permitted
-        segments, info = model.transcribe(
-            str(out_wav),
-            beam_size=5,
-            word_timestamps=True,
-            vad_filter=True,
-            language="en"
-        )
-        words = []
-        for s in segments:
-            for w in (s.words or []):
-                txt = w.word.strip()
-                # Filter out any non-ASCII / non-Latin characters (reject Hindi/Devanagari)
-                if re.search(r"[\u0900-\u097F]", txt):
-                    continue
-                if txt and w.end > w.start:
-                    words.append({
-                        "start": round(max(0.0, w.start), 3),
-                        "end": round(min(end - start, w.end), 3),
-                        "text": txt
-                    })
+        words = _transcribe_wav_chunk(model, out_wav, offset=0.0, max_dur=end - start, beam_size=5)
         return {
             "words": words,
             "language": "en",
@@ -80,6 +94,59 @@ def transcribe_audio_segment(
         }
     finally:
         out_wav.unlink(missing_ok=True)
+
+
+def transcribe_full_audio(
+    src_path: Path,
+    duration: float,
+    data_dir: Path,
+    chunk_sec: float = 900.0,
+    log=print
+) -> list:
+    """Transcribes the entire audio track of a long video in safe WAV chunks using Faster-Whisper (English-only)."""
+    if duration <= 0:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(src_path)],
+                capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW
+            )
+            duration = float(probe.stdout.strip() or 0)
+        except Exception:
+            duration = 0.0
+
+    if duration <= 0:
+        return []
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    model = get_whisper()
+    all_words = []
+    t = 0.0
+    total_chunks = max(1, int((duration + chunk_sec - 1) // chunk_sec))
+    chunk_idx = 0
+
+    while t < duration - 0.5:
+        chunk_idx += 1
+        seg_len = min(chunk_sec, duration - t)
+        out_wav = data_dir / f"full_{src_path.stem}_{uuid.uuid4().hex[:8]}_{t:.0f}.wav"
+        try:
+            log(f"[Whisper] Transcribing chunk {chunk_idx}/{total_chunks} ({t:.0f}s - {t + seg_len:.0f}s / {duration:.0f}s)...")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-t", f"{seg_len:.2f}",
+                 "-i", str(src_path), "-vn", "-ac", "1", "-ar", "16000", str(out_wav)],
+                capture_output=True, check=True, timeout=240, creationflags=NO_WINDOW
+            )
+            if out_wav.exists() and out_wav.stat().st_size > 1000:
+                chunk_words = _transcribe_wav_chunk(model, out_wav, offset=t, max_dur=seg_len, beam_size=2)
+                all_words.extend(chunk_words)
+        except Exception as e:
+            log(f"[Whisper] Chunk {chunk_idx} ({t:.0f}s) warning: {e}")
+        finally:
+            out_wav.unlink(missing_ok=True)
+        t += seg_len
+
+    all_words.sort(key=lambda w: w["start"])
+    return all_words
 
 def youtube_words_from_info(info: dict) -> list | None:
     """Extracts YouTube's native word-timed auto-captions (json3) in ~1 second.
