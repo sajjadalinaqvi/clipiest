@@ -36,22 +36,24 @@ Clipiest is an all-rounder viral clipping platform across gaming streams, podcas
 """
 
 RULES = """
-Requirements:
+Requirements for 10/10 High-View Viral Clips:
 - Recommend up to {n} distinct viral clips focusing primarily on the creator's best moments.
-- SCORE REQUIREMENT: All clips MUST have an accurate viral retention score of 85 or above (85-99). Scores above 85% are strictly preferred. Do NOT recommend weak moments below 85.
+- SCORE REQUIREMENT: All clips MUST have an accurate viral retention score of 85 or above (85-99). Scores above 85% are strictly preferred. Do NOT recommend weak moments, dead air, menu browsing, or boring setup.
 - ACCURATE VIRAL SCORING:
-  * 93-98: Explosive high-energy reactions, unhinged laughter, insane panic screams, unbelievable clutch/fails.
-  * 88-92: High-tension dramatic moments, spicy banter, hilarious chat roasts, wild confessions.
-  * 85-87: Solid comedic or high-interest highlights with clear punchline.
-- CRUCIAL TIMELINE COVERAGE (MIDDLE TIMESTAMPS): You MUST explore and distribute clips across the ENTIRE video (Start, MIDDLE, and Climax/End). Do NOT just grab the start or end of the video. Actively find and include the best moments from the middle of the timeline.
+  * 94-99: Certified viral banger — explosive reaction, unhinged laughter, insane panic scream, jaw-dropping plot twist or roast that makes strangers rewatch & share.
+  * 89-93: High-tension dramatic moment, spicy banter, hilarious chat roast, wild confession.
+  * 85-88: Solid comedic or high-interest highlight with a clean punchline.
+- COLD-OPEN HOOK TIMING: Start on the EXACT inciting line or action (zero dead air, zero "uhhh wait guys"). The first 2 seconds must hook a scrolling viewer immediately!
+- STANDALONE PAYOFF: A stranger with zero prior stream context must understand why the clip is funny/crazy, and "end" must land cleanly right after the punchline or reaction (never mid-sentence).
+- CRUCIAL TIMELINE COVERAGE (MIDDLE TIMESTAMPS): Explore and distribute clips across the ENTIRE analyzed range (Start, MIDDLE, and End). Do NOT just grab the start or end.
 - Each clip must be between {min_len}s and {max_len}s long. Use exact seconds from the transcript brackets [seconds].
-- "start": Timestamp of the setup line (start of speech, not dead air).
-- "end": Timestamp right after the punchline or reaction (end of sentence).
-- "hook": 3-5 uppercase words focused on the creator (e.g. "HE LOST HIS MIND", "BRO THOUGHT HE WAS SAFE", "HIS REACTION IS UNREAL", "HE ACTUALLY SAID THIS", "BRO WAS FIGHTING FOR HIS LIFE", "THE EXACT SECOND HE REGRETTED IT").
-- "title": Punchy, viral title under 70 characters emphasizing the creator's action/reaction.
+- "start": Timestamp of the opening hook / setup line (instant speech/action).
+- "end": Timestamp right after the punchline or reaction (clean sentence end).
+- "hook": 3-5 ALL-CAPS words creating an irresistible curiosity gap focused on the creator (e.g. "HE INSTANTLY REGRETTED THIS", "CHAT PUSHED HIM TOO FAR", "NO ONE EXPECTED HIS REACTION", "BRO WAS FIGHTING FOR HIS LIFE"). Never use generic filler like "EPIC MOMENT" or "CLIP 1".
+- "title": Scroll-stopping, viral title under 70 characters emphasizing the creator's action/reaction.
 - "score": Accurate viral retention rating between 85 and 99.
 - "category": one of funny, fail, clutch, rage, shock, story, hype.
-- "reason": Why the creator's moment will make strangers watch to the very end.
+- "reason": Why the creator's moment will get high completion rate, comments, and shares.
 
 Strictly format response as JSON array of objects:
 [
@@ -233,15 +235,16 @@ def _overlaps(s: float, e: float, others: list, threshold: float = 0.25) -> bool
     return False
 
 def snap_clip_to_sentences(clip: dict, words: list, min_len: float, max_len: float, duration: float = 999999.0):
-    """Snaps clip start to speech onset (skips dead air > 2.0s) and clip end to punctuation / word boundaries."""
+    """Snaps clip start tightly to first spoken word (eliminates >0.6s dead-air intro) and end to punctuation."""
     if not words:
         return
     lead = words[0]["start"]
-    if lead > 2.0:
-        clip["start"] = round(clip["start"] + lead - 0.3, 2)
+    if lead > 0.6:
+        shift = lead - 0.15
+        clip["start"] = round(clip["start"] + shift, 2)
         for w in words:
-            w["start"] = round(max(0.0, w["start"] - lead + 0.3), 3)
-            w["end"] = round(max(0.0, w["end"] - lead + 0.3), 3)
+            w["start"] = round(max(0.0, w["start"] - shift), 3)
+            w["end"] = round(max(0.0, w["end"] - shift), 3)
             
     limit = clip["end"] - clip["start"]
     good_ends = [
@@ -259,10 +262,13 @@ def snap_clip_to_sentences(clip: dict, words: list, min_len: float, max_len: flo
     dur = clip["end"] - clip["start"]
     words[:] = [w for w in words if w["start"] < dur]
 
-def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float, max_len: float, duration: float, title: str = "") -> list:
-    """Heuristic fallback: picks loudest stretches with verified speech across Start, Middle, and End.
-    Guarantees accurate scores >= 85 and balanced timeline distribution."""
-    clip_len = min(duration, max_len)
+def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float, max_len: float, duration: float, title: str = "", scan_start: float = 0.0, scan_end: float | None = None) -> list:
+    """Heuristic fallback: picks loudest stretches with verified speech across Start, Middle, and End
+    within [scan_start, scan_end]. Guarantees accurate scores >= 85 and balanced timeline distribution."""
+    lo_bound = max(0.0, float(scan_start or 0.0))
+    hi_bound = min(duration, float(scan_end)) if (scan_end is not None and float(scan_end) > lo_bound) else duration
+    span = max(1.0, hi_bound - lo_bound)
+    clip_len = min(span, max_len)
     base_t = (title or "Viral Highlight").split("(")[0].strip()[:35]
     hooks = [
         "WAIT FOR THIS", "HE COULD NOT BELIEVE IT", "WATCH TILL THE END",
@@ -275,11 +281,11 @@ def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float
     z = loud_zscore(db) if len(db) >= 5 and db.std() > 1e-4 else np.zeros(n_sec)
     
     picks = []
-    # Stratify across count slices so Start, Middle, and End are all represented
-    step = duration / max(1, count)
+    # Stratify across count slices within [lo_bound, hi_bound]
+    step = span / max(1, count)
     for idx in range(count):
-        t_start = idx * step
-        t_end = min(duration, (idx + 1) * step)
+        t_start = lo_bound + idx * step
+        t_end = min(hi_bound, lo_bound + (idx + 1) * step)
         
         # Find peak within this slice
         sub_lo = int(max(0, t_start))
@@ -290,8 +296,8 @@ def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float
         else:
             sec = (t_start + t_end) / 2.0
             
-        s = max(0.0, min(duration - clip_len, sec - clip_len * 0.4))
-        e = min(duration, s + clip_len)
+        s = max(lo_bound, min(hi_bound - clip_len, sec - clip_len * 0.4))
+        e = min(hi_bound, s + clip_len)
         
         # If words exist, align with words in this slice if possible
         if words:
@@ -299,13 +305,13 @@ def fallback_by_loudness(db: np.ndarray, words: list, count: int, min_len: float
             if not matching:
                 slice_words = [w for w in words if t_start <= w["start"] <= t_end]
                 if slice_words:
-                    s = max(0.0, min(duration - clip_len, slice_words[0]["start"] - 0.5))
-                    e = min(duration, s + clip_len)
+                    s = max(lo_bound, min(hi_bound - clip_len, slice_words[0]["start"] - 0.5))
+                    e = min(hi_bound, s + clip_len)
                     
         # Check for overlap with existing picks
         if any(min(e, p["end"]) - max(s, p["start"]) > 0 for p in picks):
-            s = max(0.0, min(duration - clip_len, t_start + 5.0))
-            e = min(duration, s + clip_len)
+            s = max(lo_bound, min(hi_bound - clip_len, t_start + 5.0))
+            e = min(hi_bound, s + clip_len)
 
         score_val = max(85, min(98, 96 - idx * 2))
         picks.append({
@@ -333,13 +339,21 @@ def find_viral_moments_ai(
     max_len: float = 60.0,
     game_name: str = None,
     user_instructions: str = "",
+    scan_start: float = 0.0,
+    scan_end: float | None = None,
     log=print
 ) -> list:
     """Full PeakCut-grade viral moment discovery engine with Creator-First priority.
-    Slices long streams into 15-minute sliding windows with loudness marks and invokes LLM
+    Slices the selected range (or whole stream) into timeline windows with loudness marks and invokes LLM
     to scout, score, and isolate standalone viral clips centered on the content creator."""
+    active_start = max(0.0, float(scan_start or 0.0))
+    active_end = min(duration, float(scan_end)) if (scan_end is not None and float(scan_end) > active_start) else duration
+    active_span = max(1.0, active_end - active_start)
+
     z = loud_zscore(db) if len(db) else np.zeros(int(duration))
     lines = make_transcript_lines(words, z) if words else []
+    if active_start > 0 or active_end < duration:
+        lines = [l for l in lines if active_start - 5.0 <= l["s"] <= active_end + 5.0]
 
     user_directive = f"""
 🎯 USER DIRECTIVE (HIGHEST PRIORITY):
@@ -354,7 +368,7 @@ Analyze this video to scout {max_clips} viral, high-retention moments with kille
 Video Title: "{_clean_text(title, 100) or 'Video'}"
 Channel/Creator: "{_clean_text(uploader, 50) or 'Creator'}"
 Game/Topic: "{game_name or 'Gaming/Entertainment'}"
-Total Duration: {int(duration)} seconds.
+Target Analysis Range: {active_start:.1f}s to {active_end:.1f}s (Total Video: {int(duration)}s).
 {user_directive}
 
 CONTENT-CREATOR-FIRST VIRAL PRINCIPLE:
@@ -363,13 +377,13 @@ CONTENT-CREATOR-FIRST VIRAL PRINCIPLE:
 - Only if there is NO content creator (e.g. an official game trailer or tech launch), focus on the product reveals and climactic action.
 
 TIMELINE & SCORE REQUIREMENTS:
-- Identify {max_clips} distinct viral moments distributed across the ENTIRE video (Start, MIDDLE, and Climax/End).
-- MANDATORY: Include middle timestamps (between {int(duration * 0.35)}s and {int(duration * 0.70)}s), not just the beginning and end.
+- Identify {max_clips} distinct viral moments distributed across the target range ({active_start:.0f}s to {active_end:.0f}s: Start, MIDDLE, and End).
+- MANDATORY: Include middle timestamps (between {int(active_start + active_span * 0.35)}s and {int(active_start + active_span * 0.70)}s), not just the beginning and end.
 - All clips MUST have an accurate viral score of 85 or higher (85-99, above 85% is strictly preferred).
 - Rate virality accurately: peak reactions/screams 92-98, strong comedic/clutch moments 85-91.
-- Each clip MUST be {int(min_len)} to {int(max_len)} seconds long (e.g. start: 120.0, end: 165.0).
+- Each clip MUST be {int(min_len)} to {int(max_len)} seconds long.
 - Provide high-curiosity viral hooks (ALL CAPS, 3-5 words) centered on the creator (e.g. "HE BROKE HIS SETUP", "BRO WAS NOT READY", "HIS REACTION IS UNREAL", "HE ACTUALLY LOST IT").
-- Assign realistic start and end timestamps within 0.0 to {duration:.1f} seconds.
+- Assign realistic start and end timestamps strictly within {active_start:.1f} to {active_end:.1f} seconds.
 
 Format strictly as a JSON array of objects:
 [
@@ -393,10 +407,10 @@ Format strictly as a JSON array of objects:
                 for c in raw_res:
                     if not isinstance(c, dict):
                         continue
-                    st = parse_timestamp(c.get("start"), default=0.0)
+                    st = parse_timestamp(c.get("start"), default=active_start)
                     en = parse_timestamp(c.get("end"), default=st + 45.0)
-                    st = max(0.0, min(duration - 5, st))
-                    en = min(duration, max(st + 10, en))
+                    st = max(active_start, min(active_end - 5, st))
+                    en = min(active_end, max(st + 10, en))
                     raw_score = int(parse_timestamp(c.get("score"), default=88))
                     score_val = max(85, min(99, raw_score if raw_score >= 80 else raw_score + 10))
                     cat = str(c.get("category", "action")).lower()
@@ -418,19 +432,19 @@ Format strictly as a JSON array of objects:
             log(f"LLM narrative scouting failed: {e}")
 
         log("Using loudness/excitation energy fallback.")
-        return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration, title=title)
+        return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration, title=title, scan_start=active_start, scan_end=active_end)
 
-    # Partition the ENTIRE timeline cleanly so the LLM reads 100% of the video
-    # (15-min windows up to ~2.5h; dynamically scaled up to ~10 windows for ultra-long 3h-5h+ streams)
-    win_sec = max(float(WINDOW_SEC), duration / 10.0) if duration > 0 else float(WINDOW_SEC)
+    # Partition the ENTIRE selected range [active_start, active_end] cleanly so the LLM reads 100% of it
+    # (15-min windows up to ~2.5h span; dynamically scaled up to ~10 windows for longer spans)
+    win_sec = max(float(WINDOW_SEC), active_span / 10.0) if active_span > 0 else float(WINDOW_SEC)
     overlap = min(float(OVERLAP_SEC), win_sec * 0.1)
     step = max(60.0, win_sec - overlap)
 
     windows = []
-    t = 0.0
-    while t < duration:
-        windows.append((t, min(duration, t + win_sec)))
-        if t + win_sec >= duration:
+    t = active_start
+    while t < active_end:
+        windows.append((t, min(active_end, t + win_sec)))
+        if t + win_sec >= active_end:
             break
         t += step
 
@@ -513,8 +527,8 @@ Format strictly as a JSON array of objects:
                         en = st + min_len
                     elif dur > max_len * 1.3:
                         en = st + max_len
-                    st = max(0.0, min(duration - 5, st))
-                    en = min(duration, max(st + 5, en))
+                    st = max(active_start, min(active_end - 5, st))
+                    en = min(active_end, max(st + 5, en))
 
                     cat = str(c.get("category", "other")).lower()
                     raw_score = int(parse_timestamp(c.get("score"), default=88))
@@ -558,17 +572,19 @@ Format strictly as a JSON array of objects:
         if len(chosen) >= max_clips:
             break
 
-    # Middle timestamp guarantee:
-    # If duration > 180s and none of chosen clips is in middle 50% [0.25*dur, 0.75*dur], ensure a middle highlight is included
-    if duration > 180 and len(chosen) > 1:
-        has_mid = any(0.25 * duration <= m["start"] <= 0.75 * duration for m in chosen)
+    # Middle timestamp guarantee within [active_start, active_end]:
+    # If active_span > 180s and none of chosen clips is in middle 50%, ensure a middle highlight is included
+    if active_span > 180 and len(chosen) > 1:
+        mid_lo = active_start + 0.25 * active_span
+        mid_hi = active_start + 0.75 * active_span
+        has_mid = any(mid_lo <= m["start"] <= mid_hi for m in chosen)
         if not has_mid:
-            mid_cand = next((m for m in found_moments if 0.25 * duration <= m["start"] <= 0.75 * duration and not _overlaps(m["start"], m["end"], chosen[:-1])), None)
+            mid_cand = next((m for m in found_moments if mid_lo <= m["start"] <= mid_hi and not _overlaps(m["start"], m["end"], chosen[:-1])), None)
             if mid_cand:
                 chosen[-1] = mid_cand
             else:
-                mid_picks = fallback_by_loudness(db, words, 2, min_len, max_len, duration, title=title)
-                mid_pick = next((p for p in mid_picks if 0.25 * duration <= p["start"] <= 0.75 * duration and not _overlaps(p["start"], p["end"], chosen[:-1])), None)
+                mid_picks = fallback_by_loudness(db, words, 2, min_len, max_len, duration, title=title, scan_start=active_start, scan_end=active_end)
+                mid_pick = next((p for p in mid_picks if mid_lo <= p["start"] <= mid_hi and not _overlaps(p["start"], p["end"], chosen[:-1])), None)
                 if mid_pick:
                     chosen[-1] = mid_pick
 
@@ -576,7 +592,7 @@ Format strictly as a JSON array of objects:
     if len(chosen) < max_clips:
         extra_needed = max_clips - len(chosen)
         log(f"Backfilling {extra_needed} candidate(s) using loudness and excitation...")
-        loud_picks = fallback_by_loudness(db, words, extra_needed * 2, min_len, max_len, duration, title=title)
+        loud_picks = fallback_by_loudness(db, words, extra_needed * 2, min_len, max_len, duration, title=title, scan_start=active_start, scan_end=active_end)
         unpicked = [lp for lp in loud_picks if not _overlaps(lp["start"], lp["end"], chosen)][:extra_needed]
         
         # Try to enrich backfill moments with unique creator-focused LLM titles & hooks

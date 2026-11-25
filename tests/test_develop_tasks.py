@@ -405,5 +405,56 @@ class TestDevelopRequirements(unittest.TestCase):
                 # Ensure all temp wavs were deleted
                 self.assertEqual(list(td_p.glob("full_*.wav")), [])
 
+    def test_optional_range_scopes_llm_and_saves_tokens(self):
+        """Verifies scan_start/scan_end skips earlier hours and keeps all clips strictly in selected range."""
+        # Full 3.5-hour stream words
+        words = [{"start": float(t), "end": float(t + 2.0), "text": "Insane GTA moment!"} for t in range(0, 12600, 10)]
+        db = np.zeros(12600)
+
+        queried_prompts = []
+        def fake_llm(prompt, *args, **kwargs):
+            queried_prompts.append(prompt)
+            return [{
+                "start": 8000.0,
+                "end": 8045.0,
+                "score": 96,
+                "hook": "HE INSTANTLY REGRETTED THIS",
+                "title": "Crazy GTA VI Chase",
+                "category": "funny"
+            }]
+
+        with patch("clipiest.ai.brain.ask_llm", side_effect=fake_llm):
+            moments = find_viral_moments_ai(
+                words=words,
+                db=db,
+                duration=12600.0,
+                title="3.5h Stream",
+                max_clips=2,
+                min_len=25.0,
+                max_len=60.0,
+                scan_start=7200.0,
+                scan_end=12600.0
+            )
+            # Only queried windows inside 7200-12600 (should NOT query 0-7200)
+            for p in queried_prompts:
+                self.assertNotIn("in 0s - 900s", p)
+            self.assertGreaterEqual(len(moments), 1)
+            for m in moments:
+                self.assertGreaterEqual(m["start"], 7200.0)
+                self.assertLessEqual(m["end"], 12600.0)
+
+    def test_snap_clip_to_sentences_trims_dead_air_for_cold_open(self):
+        """Verifies >0.6s dead air at clip start is trimmed to 0.15s so clips hook immediately."""
+        from clipiest.ai.brain import snap_clip_to_sentences
+        clip = {"start": 100.0, "end": 140.0}
+        words = [
+            {"start": 1.8, "end": 2.3, "text": "Wait"},
+            {"start": 2.4, "end": 3.0, "text": "what!"},
+            {"start": 28.0, "end": 29.0, "text": "crazy!"}
+        ]
+        snap_clip_to_sentences(clip, words, min_len=20.0, max_len=50.0, duration=200.0)
+        self.assertAlmostEqual(clip["start"], 101.65, places=2)
+        self.assertLess(words[0]["start"], 0.25)
+
 if __name__ == "__main__":
     unittest.main()

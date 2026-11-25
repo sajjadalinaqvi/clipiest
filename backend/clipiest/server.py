@@ -722,6 +722,8 @@ def api_scout_moments(body: dict):
     min_len = max(5, min(180, float(body.get("min_len", 30))))
     max_len = max(min_len, min(180, float(body.get("max_len", 60))))
     instructions = str(body.get("instructions") or body.get("user_instructions") or body.get("prompt") or "").strip()
+    raw_range_start = body.get("range_start")
+    raw_range_end = body.get("range_end")
 
     title, uploader, duration = "", "", 0.0
     yt_words = None
@@ -790,23 +792,53 @@ def api_scout_moments(body: dict):
             title = src.stem
             audio_file = src
 
+        from .ai.brain import parse_timestamp
+        scan_start = 0.0
+        if raw_range_start is not None and str(raw_range_start).strip() != "":
+            parsed_s = parse_timestamp(raw_range_start, default=-1.0)
+            if parsed_s >= 0:
+                scan_start = max(0.0, parsed_s)
+
+        scan_end = duration
+        if raw_range_end is not None and str(raw_range_end).strip() != "":
+            parsed_e = parse_timestamp(raw_range_end, default=-1.0)
+            if parsed_e > 0:
+                scan_end = min(duration, parsed_e) if duration > 0 else parsed_e
+
+        if duration > 0 and scan_start >= duration:
+            raise HTTPException(400, f"Selected start time ({scan_start:.0f}s) exceeds video duration ({duration:.0f}s).")
+        if duration > 0 and scan_end <= scan_start:
+            raise HTTPException(400, "Selected end time must be greater than start time.")
+
+        is_ranged = (scan_start > 1.0) or (duration > 0 and scan_end < duration - 2.0)
+        if yt_words and is_ranged:
+            yt_words = [w for w in yt_words if scan_start - 5.0 <= w["start"] <= scan_end + 5.0]
+
         game_name, hashtags = detect_game(title, uploader)
         rms = np.zeros(max(1, int(duration)))
 
         if not yt_words:
+            downloaded_ranged = False
             if url and not is_age_restricted:
                 try:
+                    from yt_dlp.utils import download_range_func
                     from .pipeline.downloader import select_lowest_audio_format
                     audio_dir = DATA_DIR / "tmp" / f"scout_{uuid.uuid4().hex[:8]}"
                     audio_dir.mkdir(parents=True, exist_ok=True)
                     tmp_clean.append(audio_dir)
                     fmt = select_lowest_audio_format(info)
-                    print(f"[Scout] Downloading lightweight audio track ({fmt}) for full-video analysis...")
-                    with get_ytdl({
+                    ytdl_opts = {
                         "format": fmt,
                         "outtmpl": str(audio_dir / "audio.%(ext)s"),
                         "concurrent_fragment_downloads": 8
-                    }) as y:
+                    }
+                    if is_ranged:
+                        ytdl_opts["download_ranges"] = download_range_func(None, [(scan_start, scan_end)])
+                        downloaded_ranged = True
+                        print(f"[Scout] Downloading selected range {scan_start:.0f}s - {scan_end:.0f}s ({fmt})...")
+                    else:
+                        print(f"[Scout] Downloading lightweight audio track ({fmt}) for full-video analysis...")
+                    with get_ytdl(ytdl_opts) as y:
                         y.download([url])
                     cand_audio = [f for f in audio_dir.glob("audio.*") if f.suffix not in (".part", ".ytdl")]
                     if cand_audio:
@@ -816,9 +848,29 @@ def api_scout_moments(body: dict):
 
             if audio_file and audio_file.exists():
                 from .audio.transcribe import transcribe_full_audio
-                print(f"[Scout] Scanning full audio loudness and transcribing entire video ({duration:.0f}s)...")
-                rms, _ = _audio_profile(audio_file)
-                yt_words = transcribe_full_audio(audio_file, duration, DATA_DIR / "tmp", log=print)
+                if downloaded_ranged:
+                    print(f"[Scout] Scanning audio loudness & transcribing range {scan_start:.0f}s - {scan_end:.0f}s...")
+                    rms_slice, _ = _audio_profile(audio_file)
+                    if len(rms_slice):
+                        s_i = min(len(rms), int(scan_start))
+                        take = min(len(rms_slice), len(rms) - s_i)
+                        if take > 0:
+                            rms[s_i:s_i + take] = rms_slice[:take]
+                    yt_words = transcribe_full_audio(
+                        audio_file, 0.0, DATA_DIR / "tmp",
+                        start_sec=0.0, end_sec=None, time_offset=scan_start, log=print
+                    )
+                elif is_ranged:
+                    print(f"[Scout] Scanning audio loudness & transcribing range {scan_start:.0f}s - {scan_end:.0f}s from local video...")
+                    rms, _ = _audio_profile(audio_file)
+                    yt_words = transcribe_full_audio(
+                        audio_file, duration, DATA_DIR / "tmp",
+                        start_sec=scan_start, end_sec=scan_end, log=print
+                    )
+                else:
+                    print(f"[Scout] Scanning full audio loudness and transcribing entire video ({duration:.0f}s)...")
+                    rms, _ = _audio_profile(audio_file)
+                    yt_words = transcribe_full_audio(audio_file, duration, DATA_DIR / "tmp", log=print)
 
         moments = find_viral_moments_ai(
             words=yt_words or [],
@@ -830,7 +882,9 @@ def api_scout_moments(body: dict):
             min_len=min_len,
             max_len=max_len,
             game_name=game_name,
-            user_instructions=instructions
+            user_instructions=instructions,
+            scan_start=scan_start,
+            scan_end=scan_end
         )
 
         for p in tmp_clean:
@@ -840,6 +894,7 @@ def api_scout_moments(body: dict):
             "success": True,
             "title": title,
             "duration": duration,
+            "range": {"start": scan_start, "end": scan_end},
             "count": len(moments),
             "instructions": instructions,
             "moments": moments

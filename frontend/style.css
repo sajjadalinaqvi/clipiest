@@ -386,6 +386,109 @@ select:focus {
   background: rgba(124, 58, 237, 0.05);
 }
 
+/* Optional Video Analysis Time Range Bar */
+.range-filter-bar {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.range-filter-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 280px;
+}
+
+.range-filter-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.opt-pill {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.range-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.range-hint code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #c4b5fd;
+}
+
+.range-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.range-input-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.range-input-group label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.range-time-input {
+  width: 130px !important;
+  max-width: 130px !important;
+  height: 32px !important;
+  padding: 4px 10px !important;
+  font-size: 12.5px !important;
+  text-align: center;
+  border-radius: var(--radius-sm) !important;
+  background: var(--bg-dark) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-main) !important;
+  box-sizing: border-box;
+}
+
+.range-time-input:focus {
+  border-color: var(--border-focus) !important;
+}
+
+.range-sep {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.range-clear-btn {
+  width: auto !important;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 4px 10px !important;
+}
+
 .settings-row {
   display: flex;
   gap: 16px;

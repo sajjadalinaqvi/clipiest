@@ -101,9 +101,12 @@ def transcribe_full_audio(
     duration: float,
     data_dir: Path,
     chunk_sec: float = 900.0,
+    start_sec: float = 0.0,
+    end_sec: float | None = None,
+    time_offset: float | None = None,
     log=print
 ) -> list:
-    """Transcribes the entire audio track of a long video in safe WAV chunks using Faster-Whisper (English-only)."""
+    """Transcribes audio of a video (or a specific [start_sec, end_sec] slice) in safe WAV chunks using Faster-Whisper (English-only)."""
     if duration <= 0:
         try:
             probe = subprocess.run(
@@ -118,26 +121,32 @@ def transcribe_full_audio(
     if duration <= 0:
         return []
 
+    t = max(0.0, float(start_sec or 0.0))
+    limit = min(duration, float(end_sec)) if (end_sec is not None and float(end_sec) > 0) else duration
+    if limit <= t:
+        return []
+
     data_dir.mkdir(parents=True, exist_ok=True)
     model = get_whisper()
     all_words = []
-    t = 0.0
-    total_chunks = max(1, int((duration + chunk_sec - 1) // chunk_sec))
+    span = limit - t
+    total_chunks = max(1, int((span + chunk_sec - 1) // chunk_sec))
     chunk_idx = 0
 
-    while t < duration - 0.5:
+    while t < limit - 0.5:
         chunk_idx += 1
-        seg_len = min(chunk_sec, duration - t)
+        seg_len = min(chunk_sec, limit - t)
         out_wav = data_dir / f"full_{src_path.stem}_{uuid.uuid4().hex[:8]}_{t:.0f}.wav"
         try:
-            log(f"[Whisper] Transcribing chunk {chunk_idx}/{total_chunks} ({t:.0f}s - {t + seg_len:.0f}s / {duration:.0f}s)...")
+            global_base = (time_offset + t) if time_offset is not None else t
+            log(f"[Whisper] Transcribing chunk {chunk_idx}/{total_chunks} ({global_base:.0f}s - {global_base + seg_len:.0f}s)...")
             subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-t", f"{seg_len:.2f}",
                  "-i", str(src_path), "-vn", "-ac", "1", "-ar", "16000", str(out_wav)],
                 capture_output=True, check=True, timeout=240, creationflags=NO_WINDOW
             )
             if out_wav.exists() and out_wav.stat().st_size > 1000:
-                chunk_words = _transcribe_wav_chunk(model, out_wav, offset=t, max_dur=seg_len, beam_size=2)
+                chunk_words = _transcribe_wav_chunk(model, out_wav, offset=global_base, max_dur=seg_len, beam_size=2)
                 all_words.extend(chunk_words)
         except Exception as e:
             log(f"[Whisper] Chunk {chunk_idx} ({t:.0f}s) warning: {e}")

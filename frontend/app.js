@@ -725,12 +725,16 @@ function setupControls() {
       }
 
       // Update time inputs and hooks
-      $('time-start').value = 0;
-      $('time-end').value = Math.min(60, Math.round(res.duration || 30));
+      const userFromSec = parseTimeInput($('scout-range-start')?.value);
+      const startSec = userFromSec !== null ? Math.max(0, Math.min(res.duration || userFromSec, userFromSec)) : 0;
+      $('time-start').value = Math.round(startSec * 10) / 10;
+      $('time-end').value = Math.round(Math.min(res.duration || (startSec + 60), startSec + 60) * 10) / 10;
       $('hook-input').value = res.title ? res.title.slice(0, 50) : '';
 
-      // Update badge
       const durStr = res.duration_formatted || `${Math.round(res.duration)}s`;
+      if ($('range-duration-hint')) {
+        $('range-duration-hint').innerHTML = `Video duration: <strong>${escapeHtml(durStr)}</strong>. Leave blank for whole video, or set <code>From</code> / <code>To</code> (e.g. <code>2:00:00</code> → <code>${escapeHtml(durStr)}</code>).`;
+      }
       if ($('source-status-badge')) {
         $('source-status-badge').textContent = `${res.game || 'Video'} · ${durStr} · ${appState.sourceWidth}x${appState.sourceHeight}`;
       }
@@ -786,17 +790,21 @@ function setupControls() {
         });
       }
 
-      // Load main thumbnail image into canvas immediately
-      const thumbUrl = res.thumbnail.startsWith('/media/') ? res.thumbnail : `/media/${res.thumbnail}`;
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = thumbUrl;
-      img.onload = () => {
-        setImageSource(img);
-      };
-      img.onerror = () => {
-        updatePreviewFrame(0);
-      };
+      // Load preview frame (jump directly to selected From timestamp if provided)
+      if (userFromSec !== null && startSec > 1) {
+        updatePreviewFrame(startSec);
+      } else {
+        const thumbUrl = res.thumbnail.startsWith('/media/') ? res.thumbnail : `/media/${res.thumbnail}`;
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = thumbUrl;
+        img.onload = () => {
+          setImageSource(img);
+        };
+        img.onerror = () => {
+          updatePreviewFrame(0);
+        };
+      }
 
     } catch (e) {
       const cleanMsg = (e.message || '')
@@ -1686,6 +1694,12 @@ function setupStudioWorkflow() {
   // Step 2: Scout Viral Moments
   if ($('start-scout-btn')) $('start-scout-btn').onclick = startMomentScout;
   if ($('scout-configure-llm-btn')) $('scout-configure-llm-btn').onclick = openConfigModal;
+  if ($('scout-range-clear-btn')) {
+    $('scout-range-clear-btn').onclick = () => {
+      if ($('scout-range-start')) $('scout-range-start').value = '';
+      if ($('scout-range-end')) $('scout-range-end').value = '';
+    };
+  }
 
   // Custom AI Instructions & Quick Presets
   const instInput = $('scout-instructions-input');
@@ -1772,11 +1786,40 @@ function setupStudioWorkflow() {
   }
 }
 
+function parseTimeInput(raw) {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (s.includes(':')) {
+    const parts = s.split(':').map(p => Number(p.trim()));
+    if (parts.some(p => !Number.isFinite(p) || p < 0)) return null;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return null;
+  }
+  const num = Number(s);
+  return Number.isFinite(num) && num >= 0 ? num : null;
+}
+
 async function startMomentScout() {
   const url = $('video-url')?.value.trim() || appState.sourceUrl;
   const id = appState.sourceId;
   if (!url && !id) {
     return alert('Please fetch or upload a video in Step 1 first.');
+  }
+
+  const rawRangeStart = $('scout-range-start')?.value.trim() || '';
+  const rawRangeEnd = $('scout-range-end')?.value.trim() || '';
+  const rangeStart = parseTimeInput(rawRangeStart);
+  const rangeEnd = parseTimeInput(rawRangeEnd);
+  if (rawRangeStart && rangeStart === null) {
+    return alert('Invalid "From" timestamp. Use seconds (e.g. 7200) or HH:MM:SS (e.g. 2:00:00).');
+  }
+  if (rawRangeEnd && rangeEnd === null) {
+    return alert('Invalid "To" timestamp. Use seconds (e.g. 12600) or HH:MM:SS (e.g. 3:30:00).');
+  }
+  if (rangeStart !== null && rangeEnd !== null && rangeEnd <= rangeStart) {
+    return alert('"To" timestamp must be greater than "From" timestamp.');
   }
 
   const btn = $('start-scout-btn');
@@ -1788,7 +1831,10 @@ async function startMomentScout() {
   const statusText = $('scout-status-text');
   const progressBar = $('scout-progress-bar');
   if (progressWrap) progressWrap.hidden = false;
-  if (statusText) statusText.innerHTML = '<span class="spin">⟳</span> Analyzing audio energy peaks, loudness, and transcript with connected LLM...';
+  const rangeLabel = (rangeStart !== null || rangeEnd !== null)
+    ? `selected range (${formatTime(rangeStart || 0)} → ${rangeEnd !== null ? formatTime(rangeEnd) : 'End'})`
+    : 'full video';
+  if (statusText) statusText.innerHTML = `<span class="spin">⟳</span> Fetching ${escapeHtml(rangeLabel)}, transcribing speech, and analyzing with connected LLM...`;
   if (progressBar) progressBar.style.width = '30%';
 
   appState.scoutingInProgress = true;
@@ -1800,7 +1846,9 @@ async function startMomentScout() {
       count: Number($('clip-count')?.value || 4),
       min_len: Number($('min-len')?.value || 30),
       max_len: Number($('max-len')?.value || 60),
-      instructions: userInstructions || undefined
+      instructions: userInstructions || undefined,
+      range_start: rangeStart !== null ? rangeStart : undefined,
+      range_end: rangeEnd !== null ? rangeEnd : undefined
     };
 
     if (progressBar) progressBar.style.width = '65%';

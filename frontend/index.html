@@ -139,6 +139,26 @@
             </div>
           </div>
 
+          <!-- Optional Time Range Filter (select specific portion before/after fetch to save LLM tokens & time) -->
+          <div class="range-filter-bar">
+            <div class="range-filter-info">
+              <span class="range-filter-label">⏱️ Video Time Range <span class="opt-pill">Optional</span></span>
+              <span id="range-duration-hint" class="range-hint">Leave blank for full video, or enter timestamps (e.g. <code>2:00:00</code> → <code>3:30:00</code>) to fetch &amp; analyze only that section.</span>
+            </div>
+            <div class="range-filter-controls">
+              <div class="range-input-group">
+                <label for="scout-range-start">From</label>
+                <input type="text" id="scout-range-start" class="range-time-input" placeholder="0:00:00 (Start)">
+              </div>
+              <span class="range-sep">→</span>
+              <div class="range-input-group">
+                <label for="scout-range-end">To</label>
+                <input type="text" id="scout-range-end" class="range-time-input" placeholder="End of video">
+              </div>
+              <button type="button" id="scout-range-clear-btn" class="btn-ghost btn-xs range-clear-btn" title="Clear range and analyze whole video">Reset</button>
+            </div>
+          </div>
+
           <!-- Video Quality & Clip Generation Settings -->
           <div class="settings-row" style="margin-top:14px;">
             <div class="field">
