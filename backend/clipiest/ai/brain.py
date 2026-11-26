@@ -434,28 +434,23 @@ Format strictly as a JSON array of objects:
         log("Using loudness/excitation energy fallback.")
         return fallback_by_loudness(db, words, max_clips, min_len, max_len, duration, title=title, scan_start=active_start, scan_end=active_end)
 
-    # Partition the ENTIRE selected range [active_start, active_end] cleanly so the LLM reads 100% of it
-    # (15-min windows up to ~2.5h span; dynamically scaled up to ~10 windows for longer spans)
-    win_sec = max(float(WINDOW_SEC), active_span / 10.0) if active_span > 0 else float(WINDOW_SEC)
-    overlap = min(float(OVERLAP_SEC), win_sec * 0.1)
-    step = max(60.0, win_sec - overlap)
-
     windows = []
     t = active_start
     while t < active_end:
-        windows.append((t, min(active_end, t + win_sec)))
-        if t + win_sec >= active_end:
+        windows.append((t, min(active_end, t + WINDOW_SEC)))
+        if t + WINDOW_SEC >= active_end:
             break
-        t += step
+        t += WINDOW_SEC - OVERLAP_SEC
 
-    # Collect every window containing speech across the entire video
+    # Score each window by loudness energy, hype punctuation, and speech activity
     window_candidates = []
     for idx, (a, b) in enumerate(windows):
         chunk = [l for l in lines if a <= l["s"] < b]
-        if len(chunk) < 2:
+        if len(chunk) < 3:
             continue
         loud_cnt = sum(1 for l in chunk if l.get("loud"))
         punc_cnt = sum(l["text"].count("!") + l["text"].count("?") for l in chunk)
+        # Weight loud peaks heavily (4x) and energetic punctuation (2x)
         excitement_score = loud_cnt * 4.0 + punc_cnt * 2.0 + len(chunk) * 1.0
         window_candidates.append({
             "idx": idx,
@@ -475,34 +470,53 @@ Format strictly as a JSON array of objects:
             "chunk": lines
         })
 
-    # Evaluate ALL windows chronologically across the whole timeline (never skip middle/end)
-    selected_windows = sorted(window_candidates, key=lambda x: x["a"])
+    # Fast peak-window selection (matches ff5ab01 speed): top peak + middle window + optional 3rd
+    window_candidates.sort(key=lambda x: -x["score"])
+    chosen_wins = []
+    if window_candidates:
+        chosen_wins.append(window_candidates[0])
+
+        if active_span > 180:
+            mid_lo = active_start + 0.25 * active_span
+            mid_hi = active_start + 0.75 * active_span
+            mid_candidates = [
+                w for w in window_candidates
+                if (mid_lo <= w["a"] <= mid_hi) or (w["a"] <= active_start + 0.50 * active_span <= w["b"])
+            ]
+            if mid_candidates:
+                mid_best = sorted(mid_candidates, key=lambda x: -x["score"])[0]
+                if mid_best not in chosen_wins:
+                    chosen_wins.append(mid_best)
+
+        if max_clips > 3:
+            for w in window_candidates[1:]:
+                if w not in chosen_wins:
+                    chosen_wins.append(w)
+                    if len(chosen_wins) >= 3:
+                        break
+
+    selected_windows = sorted(chosen_wins, key=lambda x: x["a"])
 
     game_rule = f"This stream context is {game_name}. Focus primarily on the content creator's reactions, fails, roasts, or clutches." if game_name else ""
     found_moments = []
-    win_quota = max_clips if len(selected_windows) <= 1 else min(max_clips, 3)
 
-    for w_idx, win in enumerate(selected_windows, 1):
+    for win in selected_windows:
         a, b, chunk = win["a"], win["b"], win["chunk"]
-        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=5800)
-        window_note = (
-            f"\nSegment Scope ({w_idx}/{len(selected_windows)}): {a:.0f}s to {b:.0f}s of {duration:.0f}s total. "
-            f"Use exact [seconds] timestamps from <transcript>. Return [] if this segment has no genuine 85+ viral moment.\n"
-        )
+        fmt_chunk = extract_high_energy_transcript(chunk, limit_chars=6500)
         prompt = (
             HEAD.format(
                 title=_clean_text(title, 80) or "Video",
                 uploader=_clean_text(uploader, 50) or "Channel",
-                n=win_quota,
+                n=max_clips,
                 game_rule=game_rule,
-                user_directive=user_directive + window_note
+                user_directive=user_directive
             )
-            + RULES.format(n=win_quota, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
+            + RULES.format(n=max_clips, min_len=int(min_len), max_len=int(max_len), transcript=fmt_chunk)
         )
 
         try:
-            log(f"Querying LLM ({w_idx}/{len(selected_windows)}) for viral moments in {a:.0f}s - {b:.0f}s...")
-            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.6)
+            log(f"Querying LLM for {max_clips} viral moments in peak excitement window {a:.0f}s - {b:.0f}s...")
+            raw_res = ask_llm(prompt, max_tokens=1024, temperature=0.65)
             if isinstance(raw_res, dict) and "items" in raw_res:
                 raw_res = raw_res["items"]
             if isinstance(raw_res, list) and raw_res:
@@ -517,10 +531,12 @@ Format strictly as a JSON array of objects:
                     # Correct window-relative timestamps if a local 9B model returned offset from 0s
                     if a > 120 and st < (b - a):
                         has_abs = any(st - 3.0 <= float(w.get("start", w.get("s", 0))) <= en + 3.0 for w in words)
-                        has_rel = any(st + a - 3.0 <= float(w.get("start", w.get("s", 0))) <= en + a + 3.0 for w in words)
-                        if not has_abs and has_rel:
-                            st += a
-                            en += a
+                        if not has_abs:
+                            for base_t in (a, float(chunk[0]["s"])):
+                                if any(st + base_t - 3.0 <= float(w.get("start", w.get("s", 0))) <= en + base_t + 3.0 for w in words):
+                                    st += base_t
+                                    en += base_t
+                                    break
 
                     dur = en - st
                     if dur < min_len * 0.7:
@@ -532,7 +548,6 @@ Format strictly as a JSON array of objects:
 
                     cat = str(c.get("category", "other")).lower()
                     raw_score = int(parse_timestamp(c.get("score"), default=88))
-                    # Enforce score >= 85 requirement while preserving genuine rank order
                     score_val = max(85, min(99, raw_score if raw_score >= 80 else raw_score + 10))
                     has_speech = any(st - 1.0 <= float(w.get("start", w.get("s", 0))) <= en + 1.0 for w in words)
 
@@ -549,10 +564,13 @@ Format strictly as a JSON array of objects:
                         "reason": str(c.get("reason", "Viral moment"))[:200],
                         "_has_speech": has_speech
                     })
+                # Stop early once enough strong moments are found (keeps YouTube scouting fast!)
+                if len(found_moments) >= max_clips:
+                    break
         except Exception as e:
             log(f"AI scouting window {a:.0f}-{b:.0f}s failed: {e}")
 
-    # Rank globally across the ENTIRE video (prefer verified spoken scenes and highest scores)
+    # Deduplicate and snap (prefer verified spoken moments on score ties)
     chosen = []
     found_moments.sort(key=lambda m: (-m["score"], -int(m.pop("_has_speech", True))))
     

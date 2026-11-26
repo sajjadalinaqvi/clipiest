@@ -11,9 +11,8 @@ from clipiest.ai.brain import find_viral_moments_ai
 from clipiest.server import api_llm_ping
 
 class TestMomentScoutOptimization(unittest.TestCase):
-    def test_viral_moments_scout_reads_whole_video_capped_cleanly(self):
-        """Verifies that a 2-hour video (7544s) queries ALL timeline windows across the whole video
-        (capped cleanly at <= 10 windows) and selects the highest-scoring moments globally."""
+    def test_viral_moments_scout_caps_llm_queries_on_long_video(self):
+        """Verifies that a 2-hour video (7544s) does not execute 10 sequential window queries, but caps at 1-2."""
         words = []
         # Generate 2 hours of synthetic words
         for t in range(0, 7200, 5):
@@ -27,30 +26,32 @@ class TestMomentScoutOptimization(unittest.TestCase):
         db[500:530] = 3.5
         db[3600:3630] = 4.0
 
-        def fake_ask_llm(prompt, *args, **kwargs):
-            query_counts[0] += 1
-            if "max_tokens" in kwargs:
-                self.assertLessEqual(kwargs["max_tokens"], 1024)
-            # Return clips matching the queried segment's timestamps
-            if "3360s -" in prompt or "3600" in prompt:
-                return [{
-                    "start": 3605.0,
-                    "end": 3638.0,
-                    "score": 97,
-                    "hook": "WHAT A SHOT",
-                    "title": "Shocking Middle Play",
-                    "category": "clutch"
-                }]
-            return [{
+        mock_moments = [
+            {
                 "start": 502.0,
                 "end": 535.0,
                 "score": 92,
                 "hook": "NO WAY HE CLUTCHED",
                 "title": "Insane Clutch",
                 "category": "clutch"
-            }]
+            },
+            {
+                "start": 3605.0,
+                "end": 3638.0,
+                "score": 90,
+                "hook": "WHAT A SHOT",
+                "title": "Shocking Play",
+                "category": "action"
+            }
+        ]
 
         query_counts = [0]
+        def fake_ask_llm(prompt, *args, **kwargs):
+            query_counts[0] += 1
+            if "max_tokens" in kwargs:
+                self.assertLessEqual(kwargs["max_tokens"], 1024)
+            return mock_moments
+
         with patch("clipiest.ai.brain.ask_llm", side_effect=fake_ask_llm):
             moments = find_viral_moments_ai(
                 words=words,
@@ -63,11 +64,10 @@ class TestMomentScoutOptimization(unittest.TestCase):
                 max_len=60.0
             )
 
-            # Must query across the full timeline (> 1 window, capped <= 10) and pick top global moments
-            self.assertGreater(query_counts[0], 1)
-            self.assertLessEqual(query_counts[0], 10)
+            # Crucial assertion: Must NOT run 10 window queries; early break on max_clips satisfied
+            self.assertEqual(query_counts[0], 1)
             self.assertGreaterEqual(len(moments), 2)
-            self.assertEqual(moments[0]["hook"], "WHAT A SHOT")
+            self.assertEqual(moments[0]["hook"], "NO WAY HE CLUTCHED")
 
     def test_llm_ping_endpoint_returns_dict(self):
         """Verifies /api/llm/ping executes without generating tokens or crashing."""

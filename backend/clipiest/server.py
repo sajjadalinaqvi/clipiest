@@ -847,35 +847,62 @@ def api_scout_moments(body: dict):
                     audio_file = None
 
             if audio_file and audio_file.exists():
-                from .audio.transcribe import transcribe_full_audio
                 if downloaded_ranged:
-                    print(f"[Scout] Scanning audio loudness & transcribing range {scan_start:.0f}s - {scan_end:.0f}s...")
+                    print(f"[Scout] Ranking audio peaks & transcribing top highlights in {scan_start:.0f}s - {scan_end:.0f}s...")
                     rms_slice, _ = _audio_profile(audio_file)
+                    slice_dur = max(1.0, float(probe_video(audio_file).get("duration") or len(rms_slice) or (scan_end - scan_start)))
                     if len(rms_slice):
                         s_i = min(len(rms), int(scan_start))
                         take = min(len(rms_slice), len(rms) - s_i)
                         if take > 0:
                             rms[s_i:s_i + take] = rms_slice[:take]
-                    yt_words = transcribe_full_audio(
-                        audio_file, 0.0, DATA_DIR / "tmp",
-                        start_sec=0.0, end_sec=None, time_offset=scan_start, log=print
-                    )
+                    candidates = rank_highlights(audio_file, slice_dur, count * 2, max_len, motion_on=False)
+                    words = []
+                    for c in candidates[:min(6, len(candidates))]:
+                        res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
+                        for w in res.get("words", []):
+                            words.append({
+                                "start": scan_start + c["start"] + w["start"],
+                                "end": scan_start + c["start"] + w["end"],
+                                "text": w["text"]
+                            })
+                    yt_words = sorted(words, key=lambda x: x["start"])
                 elif is_ranged:
-                    print(f"[Scout] Scanning audio loudness & transcribing range {scan_start:.0f}s - {scan_end:.0f}s from local video...")
+                    print(f"[Scout] Ranking audio peaks & transcribing top highlights in {scan_start:.0f}s - {scan_end:.0f}s from local video...")
                     rms_slice, _ = _audio_profile(audio_file, start=scan_start, end=scan_end)
                     if len(rms_slice):
                         s_i = min(len(rms), int(scan_start))
                         take = min(len(rms_slice), len(rms) - s_i)
                         if take > 0:
                             rms[s_i:s_i + take] = rms_slice[:take]
-                    yt_words = transcribe_full_audio(
-                        audio_file, duration, DATA_DIR / "tmp",
-                        start_sec=scan_start, end_sec=scan_end, log=print
-                    )
+                    candidates = rank_highlights(audio_file, duration, max(count * 3, 10), max_len, motion_on=False)
+                    ranged_cands = [c for c in candidates if scan_start - 5.0 <= c["start"] <= scan_end]
+                    if not ranged_cands:
+                        ranged_cands = [{"start": scan_start, "end": min(scan_end, scan_start + max_len)}]
+                    words = []
+                    for c in ranged_cands[:min(6, len(ranged_cands))]:
+                        res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
+                        for w in res.get("words", []):
+                            words.append({
+                                "start": c["start"] + w["start"],
+                                "end": c["start"] + w["end"],
+                                "text": w["text"]
+                            })
+                    yt_words = sorted(words, key=lambda x: x["start"])
                 else:
-                    print(f"[Scout] Scanning full audio loudness and transcribing entire video ({duration:.0f}s)...")
+                    print(f"[Scout] Scanning audio peaks & transcribing top highlights ({duration:.0f}s)...")
                     rms, _ = _audio_profile(audio_file)
-                    yt_words = transcribe_full_audio(audio_file, duration, DATA_DIR / "tmp", log=print)
+                    candidates = rank_highlights(audio_file, duration, count * 2, max_len, motion_on=False)
+                    words = []
+                    for c in candidates[:min(6, len(candidates))]:
+                        res = transcribe_audio_segment(audio_file, c["start"], c["end"], DATA_DIR / "tmp")
+                        for w in res.get("words", []):
+                            words.append({
+                                "start": c["start"] + w["start"],
+                                "end": c["start"] + w["end"],
+                                "text": w["text"]
+                            })
+                    yt_words = sorted(words, key=lambda x: x["start"])
 
         moments = find_viral_moments_ai(
             words=yt_words or [],
